@@ -14,7 +14,7 @@ Deployly is a self-hosted platform that takes a GitHub repository URL, builds th
 
 | Layer | Technology |
 |---|---|
-| Frontend dashboard | React + TypeScript + TailwindCSS |
+| Frontend dashboard | Next.js + TypeScript |
 | Backend API | NestJS (TypeScript) |
 | Job queue | BullMQ + Redis |
 | Build sandbox | nsjail (Linux namespaces) |
@@ -33,7 +33,7 @@ User Browser
      │
      │  HTTP / WebSocket
      ▼
-React Dashboard
+Next.js Dashboard
      │
      │  REST / SSE
      ▼
@@ -81,6 +81,33 @@ PostgreSQL                         Redis
 
 ---
 
+## Critical Design Decisions (Locked)
+
+These decisions are part of the implementation baseline and should be treated as non-negotiable unless the architecture is intentionally revised.
+
+1. **Project-level active deployment pointer**
+   - `Project` includes `activeDeployId` (nullable).
+   - Rollback is a metadata switch to a previous successful deployment, not a rebuild.
+
+2. **Explicit deployment state machine**
+   - Allowed transitions: `QUEUED -> BUILDING -> UPLOADING -> SUCCESS`.
+   - Failure/terminal states: `FAILED`, `TIMEOUT`, `CANCELED`.
+   - State transitions are validated in API service logic (not ad-hoc in multiple modules).
+
+3. **Dual log pipeline (realtime + durable)**
+   - Redis channel/stream is used for live log streaming to SSE clients.
+   - Logs are also persisted (DB or object storage chunks) for replay after disconnect/reload.
+
+4. **Sandbox execution split**
+   - Source fetch/dependency preparation runs in a controlled pre-step.
+   - Untrusted build execution runs inside nsjail with strict resource/time/process limits.
+
+5. **Clear ownership boundaries**
+   - API owns deployment orchestration, validation, and final state updates.
+   - Worker owns execution: fetch, build, artifact packaging/upload, and progress events.
+
+---
+
 ## End-to-End Deploy Flow
 
 ```
@@ -88,11 +115,11 @@ PostgreSQL                         Redis
 2.  User clicks "Deploy" (or a GitHub push webhook fires)
 3.  POST /deployments  →  creates Deployment(status: QUEUED)  →  BullMQ job added
 4.  Worker picks up the job  →  status: BUILDING
-5.  Worker spawns nsjail sandbox with the build commands
+5.  Worker runs controlled pre-step (fetch/prepare), then executes build in nsjail
 6.  Build stdout streams line-by-line to Redis pub/sub channel deploy:<deployId>
 7.  NestJS SSE endpoint subscribes to that channel → pushes to browser
 8.  Dashboard renders a live terminal UI via EventSource
-9.  Build succeeds  →  dist/ uploaded to MinIO  →  status: SUCCESS
+9.  Build succeeds  →  dist/ uploaded to MinIO  →  status: UPLOADING → SUCCESS
 10. Nginx serves <project>.deployly.dev from the new MinIO prefix
 11. Dashboard shows the live URL + deploy history with rollback buttons
 ```
@@ -254,6 +281,7 @@ model Project {
   name        String
   repoUrl     String
   subdomain   String       @unique
+  activeDeployId String?   // points to currently live successful deployment
   userId      String
   user        User         @relation(fields: [userId], references: [id])
   deployments Deployment[]
@@ -274,8 +302,11 @@ model Deployment {
 enum Status {
   QUEUED
   BUILDING
+  UPLOADING
   SUCCESS
   FAILED
+  TIMEOUT
+  CANCELED
 }
 ```
 
@@ -288,7 +319,7 @@ version: '3.9'
 
 services:
   api:
-    build: ./apps/api
+    build: ./server
     ports: ['3000:3000']
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/deployly
@@ -301,7 +332,7 @@ services:
     depends_on: [postgres, redis, minio]
 
   worker:
-    build: ./apps/worker
+    build: ./server
     environment:
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
@@ -357,31 +388,21 @@ volumes:
 
 ```
 deployly/
-├── apps/
-│   ├── api/                     # NestJS API
-│   │   ├── src/
-│   │   │   ├── auth/            # GitHub OAuth, JWT guard
-│   │   │   ├── projects/        # Projects CRUD
-│   │   │   ├── deployments/     # Deploy trigger, SSE logs
-│   │   │   ├── webhooks/        # GitHub push webhook
-│   │   │   └── serve/           # Static file proxy (subdomain routing)
-│   │   └── prisma/
-│   │       └── schema.prisma
-│   │
-│   └── worker/                  # BullMQ build worker
-│       └── src/
-│           ├── worker.ts        # Bull Worker definition
-│           ├── sandbox.ts       # nsjail spawn logic
-│           ├── storage.ts       # MinIO upload
-│           └── logs.ts          # Redis pub/sub publish
+├── server/                      # NestJS API + worker (TypeScript)
+│   ├── src/
+│   │   ├── auth/                # GitHub OAuth, JWT guard
+│   │   ├── projects/            # Projects CRUD
+│   │   ├── deployments/         # Deploy trigger, SSE logs
+│   │   ├── webhooks/            # GitHub push webhook
+│   │   ├── serve/               # Static file proxy (subdomain routing)
+│   │   └── worker/              # BullMQ build worker runtime
+│   └── prisma/
+│       └── schema.prisma
 │
-├── dashboard/                   # React frontend
-│   └── src/
-│       ├── pages/
-│       │   ├── Projects.tsx
-│       │   └── DeploymentLogs.tsx
-│       └── components/
-│           └── Terminal.tsx     # SSE log renderer
+├── web/                         # Next.js frontend dashboard (TypeScript)
+│   └── app/
+│       ├── page.tsx
+│       └── layout.tsx
 │
 ├── docker-compose.yml
 ├── nginx.conf
