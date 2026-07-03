@@ -24,6 +24,7 @@ model User {
 model Project {
   id               String             @id @default(cuid())
   name             String
+  description      String?
   repoUrl          String
   subdomain        String             @unique
   userId           String
@@ -43,7 +44,10 @@ model Deployment {
   status           Status               @default(QUEUED)
   s3Prefix         String
   commitSha        String
+  commitMessage    String?
+  repoUrl          String
   branch           String
+  deployedBy       String
   triggerSource    DeploymentTrigger    @default(MANUAL)
   logs             DeploymentLogChunk[]
   deployedAt       DateTime             @default(now())

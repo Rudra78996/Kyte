@@ -1,0 +1,67 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ProjectsService } from './projects.service';
+import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+
+@Controller('projects')
+@UseGuards(JwtAuthGuard)
+export class ProjectsController {
+  constructor(private projectsService: ProjectsService) {}
+
+  @Post()
+  async create(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateProjectDto,
+  ) {
+    return this.projectsService.create(userId, dto);
+  }
+
+  @Get()
+  async findAll(
+    @CurrentUser('id') userId: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    return this.projectsService.findAll(
+      userId,
+      skip ? parseInt(skip) : 0,
+      take ? parseInt(take) : 20,
+    );
+  }
+
+  @Get(':id')
+  async findOne(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.findOne(userId, projectId);
+  }
+
+  @Patch(':id')
+  async update(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Body() dto: UpdateProjectDto,
+  ) {
+    return this.projectsService.update(userId, projectId, dto);
+  }
+
+  @Delete(':id')
+  async delete(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.delete(userId, projectId);
+  }
+}
