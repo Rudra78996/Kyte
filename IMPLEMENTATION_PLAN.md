@@ -8,7 +8,7 @@ This document converts the architecture into an execution roadmap with clear pha
 
 Build a self-hosted frontend hosting platform where users can:
 
-1. Sign in with GitHub
+1. Sign in with email/password
 2. Connect a repository
 3. Trigger deploys (manual + webhook)
 4. View live build logs
@@ -23,7 +23,7 @@ Initial focus is **frontend static apps** (Vite/React-like output in `dist` or c
 
 ### Control Plane
 - **Dashboard (React/Next.js)** for user interactions.
-- **API (NestJS)** for auth, projects, deployments, webhooks, serving metadata.
+- **API (NestJS)** for auth, projects, deployments, GitHub integration, webhooks, serving metadata.
 - **PostgreSQL (Prisma)** as source of truth.
 
 ### Build Plane
@@ -95,14 +95,18 @@ Establish secure identity and core relational schema.
   - `User`
   - `Project` (+ `activeDeployId`)
   - `Deployment` (+ status, branch, commit, s3Prefix)
+  - `GitHubConnection` (optional linked account/token metadata)
   - optional `DeploymentLogChunk` (if DB log storage chosen)
-- GitHub OAuth flow + JWT issue/verify
+- Email/password auth + JWT issue/verify
+- Optional GitHub account connect flow (for private repos + webhook setup)
+- Public repository deploy path without GitHub OAuth
 - Auth guards for protected APIs
 
 ### Backend Tasks
 - Define migrations
-- Implement auth module and callback handling
-- Store `githubId`, username, avatar
+- Implement email/password auth module and session/token flow
+- Implement GitHub connect/disconnect callback handling
+- Store connected GitHub identity and permission scope metadata
 - Secure token handling and expiry policy
 
 ### Deliverables
@@ -335,13 +339,14 @@ Phase 8 starts after MVP stabilization.
 
 MVP is complete when all are true:
 
-1. User can authenticate via GitHub.
+1. User can authenticate via email/password.
 2. User can create a project and connect a repo.
-3. User can trigger deployment manually and via webhook.
-4. Build runs asynchronously with live log streaming.
-5. Successful artifacts are hosted on `<project>.<base-domain>`.
-6. Rollback to previous successful deployment works instantly.
-7. Failures are visible with actionable logs and consistent statuses.
+3. User can deploy public GitHub repositories without connecting GitHub.
+4. User can optionally connect GitHub and trigger deployment via webhook.
+5. Build runs asynchronously with live log streaming.
+6. Successful artifacts are hosted on `<project>.<base-domain>`.
+7. Rollback to previous successful deployment works instantly.
+8. Failures are visible with actionable logs and consistent statuses.
 
 ---
 
@@ -352,4 +357,3 @@ MVP is complete when all are true:
 3. Lock API contracts for Phase 2 before frontend integration.
 4. Build worker skeleton with state transitions and logging hooks.
 5. Add a minimal vertical slice demo: trigger deploy -> queued job -> mocked success state update.
-

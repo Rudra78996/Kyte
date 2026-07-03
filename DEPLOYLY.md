@@ -21,7 +21,7 @@ Deployly is a self-hosted platform that takes a GitHub repository URL, builds th
 | Object storage | MinIO (S3-compatible) |
 | Database | PostgreSQL via Prisma |
 | Reverse proxy | Nginx (wildcard subdomain) |
-| Auth | GitHub OAuth via Passport.js |
+| Auth | Email/password + JWT (GitHub connect optional) |
 | Infra | Single EC2 instance, Docker Compose |
 
 ---
@@ -38,10 +38,11 @@ Next.js Dashboard
      │  REST / SSE
      ▼
 NestJS API Server
-  ├── AuthModule          (GitHub OAuth, JWT)
+  ├── AuthModule          (Email/password, JWT)
+  ├── IntegrationsModule  (GitHub connect, token metadata)
   ├── ProjectsModule      (CRUD, repo linking)
   ├── DeploymentsModule   (trigger, history, log stream)
-  └── WebhooksModule      (GitHub push → auto deploy)
+  └── WebhooksModule      (GitHub push → auto deploy for connected repos)
      │
      ├──────────────────────────────────┐
      │  Prisma ORM                      │  BullMQ enqueue
@@ -111,17 +112,18 @@ These decisions are part of the implementation baseline and should be treated as
 ## End-to-End Deploy Flow
 
 ```
-1.  User connects a GitHub repo on the dashboard
-2.  User clicks "Deploy" (or a GitHub push webhook fires)
-3.  POST /deployments  →  creates Deployment(status: QUEUED)  →  BullMQ job added
-4.  Worker picks up the job  →  status: BUILDING
-5.  Worker runs controlled pre-step (fetch/prepare), then executes build in nsjail
-6.  Build stdout streams line-by-line to Redis pub/sub channel deploy:<deployId>
-7.  NestJS SSE endpoint subscribes to that channel → pushes to browser
-8.  Dashboard renders a live terminal UI via EventSource
-9.  Build succeeds  →  dist/ uploaded to MinIO  →  status: UPLOADING → SUCCESS
-10. Nginx serves <project>.deployly.dev from the new MinIO prefix
-11. Dashboard shows the live URL + deploy history with rollback buttons
+1.  User creates account (email/password) and signs in
+2.  User adds a repository (public URL directly, or private via connected GitHub)
+3.  User clicks "Deploy" (or a GitHub push webhook fires for connected repos)
+4.  POST /deployments  →  creates Deployment(status: QUEUED)  →  BullMQ job added
+5.  Worker picks up the job  →  status: BUILDING
+6.  Worker runs controlled pre-step (fetch/prepare), then executes build in nsjail
+7.  Build stdout streams line-by-line to Redis pub/sub channel deploy:<deployId>
+8.  NestJS SSE endpoint subscribes to that channel → pushes to browser
+9.  Dashboard renders a live terminal UI via EventSource
+10. Build succeeds  →  dist/ uploaded to MinIO  →  status: UPLOADING → SUCCESS
+11. Nginx serves <project>.deployly.dev from the new MinIO prefix
+12. Dashboard shows the live URL + deploy history with rollback buttons
 ```
 
 ---
@@ -132,10 +134,11 @@ These decisions are part of the implementation baseline and should be treated as
 
 Four modules cover everything:
 
-- **AuthModule** — GitHub OAuth flow, issues JWT. Passport strategy handles the callback, stores `githubId` in the users table.
+- **AuthModule** — email/password login, password hashing, JWT issuance/verification, and protected route guards.
+- **IntegrationsModule** — optional GitHub connect flow to enable private repositories and webhook-driven deploys.
 - **ProjectsModule** — CRUD for projects. Each project stores a `repoUrl`, `subdomain`, and `userId`. Subdomain is unique across the table.
 - **DeploymentsModule** — `POST /deployments` enqueues a BullMQ job and creates a `Deployment` record. `GET /deployments/:id/logs` opens an SSE stream that relays Redis pub/sub messages to the browser.
-- **WebhooksModule** — receives GitHub push webhooks, verifies the signature, and enqueues a deploy job automatically.
+- **WebhooksModule** — receives GitHub push webhooks for connected repositories, verifies the signature, and enqueues deploy jobs.
 
 ### BullMQ Worker
 
@@ -390,7 +393,8 @@ volumes:
 deployly/
 ├── server/                      # NestJS API + worker (TypeScript)
 │   ├── src/
-│   │   ├── auth/                # GitHub OAuth, JWT guard
+│   │   ├── auth/                # Email/password auth, JWT guard
+│   │   ├── integrations/        # Optional GitHub connect/linking
 │   │   ├── projects/            # Projects CRUD
 │   │   ├── deployments/         # Deploy trigger, SSE logs
 │   │   ├── webhooks/            # GitHub push webhook
@@ -429,7 +433,7 @@ The main subdomain (`<project>.deployly.dev`) always points to the latest succes
 
 ### Auto Deploy via Webhook
 
-GitHub sends a `push` event to `POST /webhooks/github`. The `WebhooksModule` verifies the `X-Hub-Signature-256` header, extracts the repo URL and commit SHA, and enqueues a deploy job — same as a manual deploy, zero extra wiring.
+GitHub sends a `push` event to `POST /webhooks/github` for repositories linked through the optional GitHub integration. The `WebhooksModule` verifies the `X-Hub-Signature-256` header, extracts the repo URL and commit SHA, and enqueues a deploy job — same as a manual deploy path.
 
 ---
 
@@ -451,12 +455,12 @@ GitHub sends a `push` event to `POST /webhooks/github`. The `WebhooksModule` ver
 ## Environment Variables
 
 ```env
-# GitHub OAuth
+# GitHub integration (optional; needed for private repos and auto webhook setup)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITHUB_WEBHOOK_SECRET=
 
-# Auth
+# Auth (application login)
 JWT_SECRET=
 
 # Database

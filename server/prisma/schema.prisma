@@ -1,0 +1,99 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String
+  githubId          String?            @unique
+  username          String?
+  avatarUrl         String?
+  projects          Project[]
+  githubConnections GitHubConnection[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model Project {
+  id               String             @id @default(cuid())
+  name             String
+  repoUrl          String
+  subdomain        String             @unique
+  userId           String
+  user             User               @relation(fields: [userId], references: [id])
+  activeDeployId   String?            @unique
+  activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
+  deployments      Deployment[]       @relation("ProjectDeployments")
+  githubConnection GitHubConnection?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Deployment {
+  id               String               @id @default(cuid())
+  projectId        String
+  project          Project              @relation("ProjectDeployments", fields: [projectId], references: [id])
+  status           Status               @default(QUEUED)
+  s3Prefix         String
+  commitSha        String
+  branch           String
+  triggerSource    DeploymentTrigger    @default(MANUAL)
+  logs             DeploymentLogChunk[]
+  deployedAt       DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  activeForProject Project?             @relation("ActiveDeployment")
+}
+
+model DeploymentLogChunk {
+  id           String     @id @default(cuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  sequence     Int
+  content      String
+  stream       LogStream
+  createdAt    DateTime   @default(now())
+
+  @@unique([deploymentId, sequence, stream])
+}
+
+model GitHubConnection {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId            String?   @unique
+  project              Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  githubUserId         String    @unique
+  githubUsername       String
+  accessTokenEncrypted String?
+  scopes               String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+enum Status {
+  QUEUED
+  BUILDING
+  UPLOADING
+  SUCCESS
+  FAILED
+  TIMEOUT
+  CANCELED
+}
+
+enum DeploymentTrigger {
+  MANUAL
+  WEBHOOK
+}
+
+enum LogStream {
+  STDOUT
+  STDERR
+}
+
