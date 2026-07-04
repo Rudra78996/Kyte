@@ -2,12 +2,15 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class DeploymentsService {
   constructor(
     private prisma: PrismaService,
     private projectsService: ProjectsService,
+    @InjectQueue('builds') private queue: Queue,
   ) {}
 
   async create(userId: string, projectId: string, dto: CreateDeploymentDto) {
@@ -42,8 +45,13 @@ export class DeploymentsService {
       },
     });
 
-    // TODO: Enqueue job in Phase 3
-    // await this.queue.add('deploy', { deploymentId: deployment.id });
+    // Enqueue job in Phase 3
+    await this.queue.add('deploy', {
+      deploymentId: deployment.id,
+      repoUrl: deployment.repoUrl,
+      branch: deployment.branch,
+      commitSha: deployment.commitSha,
+    });
 
     return deployment;
   }
@@ -142,7 +150,13 @@ export class DeploymentsService {
       },
     });
 
-    // TODO: Enqueue rollback job in Phase 3
+    // Enqueue rollback job in Phase 3
+    await this.queue.add('deploy', {
+      deploymentId: rollbackDeploy.id,
+      repoUrl: rollbackDeploy.repoUrl,
+      branch: rollbackDeploy.branch,
+      commitSha: rollbackDeploy.commitSha,
+    });
 
     return rollbackDeploy;
   }

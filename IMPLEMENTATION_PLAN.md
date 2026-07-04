@@ -152,7 +152,7 @@ Run deployments asynchronously and safely.
 - BullMQ queue setup
 - Worker process with retry/backoff policy
 - Build workspace lifecycle
-- Sandbox execution and resource limits
+- Worker execution pipeline (standard execa isolation for MVP)
 
 ### Worker Tasks
 - Job consume/ack/fail patterns
@@ -162,11 +162,10 @@ Run deployments asynchronously and safely.
 - Capture stdout/stderr line-by-line
 - Mark status transitions correctly
 
-### Security Controls
-- Non-root execution
-- CPU/RAM/PID/time limits
-- Filesystem isolation
-- Cleanup on success/failure (`finally`)
+### Security Controls (MVP Level)
+- Non-root execution where possible
+- Filesystem cleanup on success/failure (`finally`)
+- Baseline Docker container isolation (separated worker network)
 
 ### Deliverables
 - End-to-end build from repo to local artifact folder
@@ -269,6 +268,7 @@ Prepare v1 for real workloads and failure scenarios.
 - Worker heartbeats and timeout reconciliation
 - Queue depth and build duration metrics
 - Structured logs for API/worker
+- **Implement strict nsjail sandboxing** (Compile nsjail from source in a custom Dockerfile, grant `privileged: true` or specific capabilities to worker container, and enforce CPU/RAM/PID limits).
 - Security audit pass for sandbox and auth/webhooks
 
 ### Deliverables
