@@ -4,6 +4,7 @@ import execa from 'execa';
 import * as fs from 'fs-extra';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
+import { uploadDirectory } from './minio';
 
 const port = Number(process.env.WORKER_PORT ?? 3001);
 
@@ -31,7 +32,7 @@ const worker = new Worker('builds', async (job: Job) => {
   const { deploymentId, repoUrl } = job.data;
   console.log(`[worker] Processing deploy ${deploymentId} for ${repoUrl}`);
 
-  await prisma.deployment.update({
+  const deployment = await prisma.deployment.update({
     where: { id: deploymentId },
     data: { status: 'BUILDING' }
   });
@@ -82,12 +83,27 @@ const worker = new Worker('builds', async (job: Job) => {
       build.stderr?.on('data', (c: any) => publishLog(c, 'STDERR'));
       await build;
     }
+    
+    publishLog('Starting upload...\n', 'STDOUT');
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: { status: 'UPLOADING' }
+    });
+
+    const distDir = `${buildDir}/app/dist`;
+    await uploadDirectory(deployment.s3Prefix, distDir, (msg) => publishLog(msg + '\n', 'STDOUT'));
 
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: { status: 'SUCCESS' }
     });
-    publishLog('Build complete.\n', 'STDOUT');
+    publishLog('Deploy complete.\n', 'STDOUT');
+
+    // Update Project active deployment
+    await prisma.project.update({
+      where: { id: deployment.projectId },
+      data: { activeDeployId: deploymentId }
+    });
 
   } catch (err: any) {
     publishLog(`Build failed: ${err.message}\n`, 'STDERR');

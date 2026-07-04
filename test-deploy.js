@@ -1,33 +1,6 @@
 const http = require('http');
 
-async function request(method, path, body = null, token = null) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      `http://localhost:3000${path}`,
-      {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      },
-      (res) => {
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => {
-          try {
-            resolve({ status: res.statusCode, data: JSON.parse(data) });
-          } catch {
-            resolve({ status: res.statusCode, data });
-          }
-        });
-      }
-    );
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
-  });
-}
+
 
 async function run() {
   console.log('1. Registering user...');
@@ -63,17 +36,18 @@ async function run() {
   console.log('2. Creating project...');
   res = await request('POST', '/projects', {
     name: 'Test Project',
-    repoUrl: 'https://github.com/mdn/todo-react.git',
+    repoUrl: 'https://github.com/amannn/vite-react-starter.git',
     description: 'A test react app'
   }, actualToken);
   console.log('Project Response:', res.status, res.data);
   const projectId = res.data.id;
+  const subdomain = res.data.subdomain;
 
   if (!projectId) return;
 
   console.log('3. Triggering deployment...');
   res = await request('POST', `/projects/${projectId}/deployments`, {
-    repoUrl: 'https://github.com/mdn/todo-react.git',
+    repoUrl: 'https://github.com/amannn/vite-react-starter.git',
     branch: 'master',
     commitSha: 'HEAD',
     trigger: 'MANUAL',
@@ -95,9 +69,47 @@ async function run() {
       if (res.data.logs) {
          console.log('Logs saved in DB? (Count):', res.data.logs.length);
       }
+      if (status === 'SUCCESS' && subdomain) {
+        console.log(`5. Testing hosted URL: http://${subdomain}.localhost`);
+        const serveRes = await request('GET', '/', null, null, subdomain);
+        console.log(`Hosted URL Response Status: ${serveRes.status}`);
+        console.log(`Hosted URL Body (first 100 chars): ${String(serveRes.data).substring(0, 100)}`);
+      }
       break;
     }
   }
+}
+
+// Update the request function to allow passing a Host header
+async function request(method, path, body = null, token = null, subdomain = null) {
+  return new Promise((resolve, reject) => {
+    const port = subdomain ? 80 : 3000;
+    const req = http.request(
+      `http://localhost:${port}${path}`,
+      {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(subdomain ? { Host: `${subdomain}.localhost` } : {}),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            resolve({ status: res.statusCode, data: JSON.parse(data) });
+          } catch {
+            resolve({ status: res.statusCode, data });
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
 }
 
 run().catch(console.error);
