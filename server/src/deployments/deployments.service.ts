@@ -4,6 +4,9 @@ import { ProjectsService } from '../projects/projects.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { Observable } from 'rxjs';
+import { MessageEvent } from '@nestjs/common';
+import Redis from 'ioredis';
 
 @Injectable()
 export class DeploymentsService {
@@ -159,5 +162,32 @@ export class DeploymentsService {
     });
 
     return rollbackDeploy;
+  }
+
+  streamLogs(id: string): Observable<MessageEvent> {
+    return new Observable((observer) => {
+      const channel = `deploy:${id}`;
+      const redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+      
+      redisClient.subscribe(channel, (err) => {
+        if (err) observer.error(err);
+      });
+
+      redisClient.on('message', (ch, message) => {
+        if (ch === channel) {
+          try {
+            observer.next({ data: JSON.parse(message) });
+          } catch (e) {
+            observer.next({ data: { text: message, stream: 'STDOUT' } });
+          }
+        }
+      });
+
+      // Cleanup when client disconnects
+      return () => {
+        redisClient.unsubscribe(channel);
+        redisClient.quit();
+      };
+    });
   }
 }
