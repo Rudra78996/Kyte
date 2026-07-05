@@ -6,7 +6,10 @@ import {
   Body,
   Query,
   UseGuards,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { DeploymentsService } from './deployments.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -57,5 +60,10 @@ export class DeploymentsController {
     @Param('deploymentId') deploymentId: string,
   ) {
     return this.deploymentsService.rollback(userId, projectId, deploymentId);
+  }
+
+  @Sse(':deploymentId/logs')
+  streamLogs(@Param('deploymentId') deploymentId: string): Observable<MessageEvent> {
+    return this.deploymentsService.streamLogs(deploymentId);
   }
 }
