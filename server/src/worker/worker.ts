@@ -47,23 +47,30 @@ const worker = new Worker('builds', async (job: Job) => {
   };
 
   try {
-    const runNsjail = false; // We can mock it or run real nsjail
+    const runNsjail = true;
     
     if (runNsjail) {
-      await execa('nsjail', [
-        '--mode', 'o',
-        '--chroot', buildDir,
-        '--user', '99', '--group', '99',
-        '--time_limit', '300',
-        '--rlimit_cpu', '30',
-        '--rlimit_as', '536870912',
-        '--disable_clone_newnet',
+      const nsjailProcess = execa('nsjail', [
+        '-Mo', // Mount proc/sys and run once
+        '--chroot', '/', // Don't chroot into an empty dir, use the container's root
+        '--bindmount_ro', '/', // Mount the whole filesystem read-only
+        '--bindmount', `${buildDir}:/build`, // Mount only the build dir read-write
+        '--user', '99999', '--group', '99999', // Run as nobody
+        '--time_limit', '300', // 5 minute max
+        '--rlimit_as', 'inf', // Allow Node.js/WASM to map virtual memory
+        '--rlimit_nofile', '4096', // Max 4096 open files (npm needs this)
+        '--rlimit_fsize', 'inf', // Allow creating large files (e.g. node_modules/ build output)
+        '--disable_clone_newnet', // allow internet access
+        '--env', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        '--env', 'HOME=/build', // npm needs a writable home
         '--',
         '/bin/sh', '-c',
-        `git clone --depth 1 ${repoUrl} /app && cd /app && npm install --ignore-scripts && npm run build`
+        `git clone --depth 1 ${repoUrl} /build/app && cd /build/app && npm install --ignore-scripts && npm run build`
       ], {
         all: true
-      }).on('all', (chunk: any) => publishLog(chunk || '', 'STDOUT'));
+      });
+      nsjailProcess.all?.on('data', (chunk: any) => publishLog(chunk || '', 'STDOUT'));
+      await nsjailProcess;
     } else {
       publishLog('Starting clone...\n', 'STDOUT');
       const clone = execa('git', ['clone', '--depth', '1', repoUrl, `${buildDir}/app`]);

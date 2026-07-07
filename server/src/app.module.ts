@@ -7,6 +7,8 @@ import { ProjectsModule } from './projects/projects.module';
 import { DeploymentsModule } from './deployments/deployments.module';
 import { ServeModule } from './serve/serve.module';
 import { BullModule } from '@nestjs/bullmq';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
 
@@ -16,6 +18,10 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       isGlobal: true,
       envFilePath: ['../.env', '.env'],
     }),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100, // 100 requests per minute by default
+    }]),
     BullModule.forRootAsync({
       useFactory: () => ({
         connection: {
@@ -31,6 +37,11 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     WebhooksModule,
   ],
   controllers: [AppController],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

@@ -33,8 +33,9 @@ services:
   worker:
     build:
       context: ./server
-      dockerfile: Dockerfile
-    command: ["npm", "run", "worker"]
+      dockerfile: Dockerfile.worker
+    privileged: true
+    command: ["/app/start-worker.sh"]
     env_file:
       - .env
     environment:

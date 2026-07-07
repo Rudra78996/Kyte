@@ -32,6 +32,9 @@ async function* getFiles(dir: string): AsyncGenerator<string> {
   const dirents = await fs.readdir(dir, { withFileTypes: true });
   for (const dirent of dirents) {
     const res = path.resolve(dir, dirent.name);
+    if (dirent.isSymbolicLink()) {
+      continue; // Skip symlinks to prevent arbitrary file read
+    }
     if (dirent.isDirectory()) {
       yield* getFiles(res);
     } else {

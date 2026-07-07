@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
@@ -9,12 +9,41 @@ import { MessageEvent } from '@nestjs/common';
 import Redis from 'ioredis';
 
 @Injectable()
-export class DeploymentsService {
+export class DeploymentsService implements OnModuleInit {
+  private readonly logger = new Logger(DeploymentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private projectsService: ProjectsService,
     @InjectQueue('builds') private queue: Queue,
   ) {}
+
+  onModuleInit() {
+    // Reconcile stuck jobs every 5 minutes
+    setInterval(async () => {
+      try {
+        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+        const stuckDeployments = await this.prisma.deployment.findMany({
+          where: {
+            status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+            deployedAt: { lt: fifteenMinutesAgo },
+          },
+        });
+
+        if (stuckDeployments.length > 0) {
+          this.logger.warn(`Found ${stuckDeployments.length} stuck deployments. Marking as FAILED.`);
+          await this.prisma.deployment.updateMany({
+            where: {
+              id: { in: stuckDeployments.map(d => d.id) }
+            },
+            data: { status: 'FAILED' }
+          });
+        }
+      } catch (err) {
+        this.logger.error('Failed to reconcile stuck jobs', err);
+      }
+    }, 5 * 60 * 1000);
+  }
 
   async create(userId: string, projectId: string, dto: CreateDeploymentDto) {
     // Verify project ownership
@@ -28,6 +57,22 @@ export class DeploymentsService {
         status: 'QUEUED',
       },
     });
+
+    if (existingPending) {
+      return existingPending;
+    }
+
+    // Limit active deployments per project to prevent DDoS / queue starvation
+    const activeDeploymentsCount = await this.prisma.deployment.count({
+      where: {
+        projectId,
+        status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+      }
+    });
+
+    if (activeDeploymentsCount >= 2) {
+      throw new BadRequestException('Too many active deployments for this project. Please wait for them to finish.');
+    }
 
     if (existingPending) {
       return existingPending;
@@ -54,6 +99,11 @@ export class DeploymentsService {
       repoUrl: deployment.repoUrl,
       branch: deployment.branch,
       commitSha: deployment.commitSha,
+    }, {
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 24 * 3600, count: 100 },
     });
 
     return deployment;
@@ -159,12 +209,27 @@ export class DeploymentsService {
       repoUrl: rollbackDeploy.repoUrl,
       branch: rollbackDeploy.branch,
       commitSha: rollbackDeploy.commitSha,
+    }, {
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: true,
+      removeOnFail: { age: 24 * 3600, count: 100 },
     });
 
     return rollbackDeploy;
   }
 
-  streamLogs(id: string): Observable<MessageEvent> {
+  async streamLogs(userId: string, projectId: string, id: string): Promise<Observable<MessageEvent>> {
+    await this.projectsService.findOne(userId, projectId);
+    
+    const deployment = await this.prisma.deployment.findUnique({
+      where: { id },
+    });
+
+    if (!deployment || deployment.projectId !== projectId) {
+      throw new ForbiddenException('Deployment does not belong to this project');
+    }
+
     return new Observable((observer) => {
       // Send historical logs first
       this.prisma.deploymentLogChunk.findMany({

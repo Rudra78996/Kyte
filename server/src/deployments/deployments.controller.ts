@@ -63,7 +63,11 @@ export class DeploymentsController {
   }
 
   @Sse(':deploymentId/logs')
-  streamLogs(@Param('deploymentId') deploymentId: string): Observable<MessageEvent> {
-    return this.deploymentsService.streamLogs(deploymentId);
+  async streamLogs(
+    @CurrentUser('id') userId: string,
+    @Param('projectId') projectId: string,
+    @Param('deploymentId') deploymentId: string,
+  ): Promise<Observable<MessageEvent>> {
+    return this.deploymentsService.streamLogs(userId, projectId, deploymentId);
   }
 }
