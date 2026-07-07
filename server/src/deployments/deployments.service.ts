@@ -166,6 +166,18 @@ export class DeploymentsService {
 
   streamLogs(id: string): Observable<MessageEvent> {
     return new Observable((observer) => {
+      // Send historical logs first
+      this.prisma.deploymentLogChunk.findMany({
+        where: { deploymentId: id },
+        orderBy: { sequence: 'asc' }
+      }).then(logs => {
+        logs.forEach(log => {
+          observer.next({ data: { text: log.content, stream: log.stream } });
+        });
+      }).catch(err => {
+        console.error('Failed to fetch historical logs', err);
+      });
+
       const channel = `deploy:${id}`;
       const redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
       

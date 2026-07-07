@@ -57,6 +57,14 @@ export class ProjectsController {
     return this.projectsService.update(userId, projectId, dto);
   }
 
+  @Post(':id/webhook/enable')
+  async enableWebhook(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.enableWebhook(userId, projectId);
+  }
+
   @Delete(':id')
   async delete(
     @CurrentUser('id') userId: string,

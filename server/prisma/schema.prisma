@@ -33,6 +33,7 @@ model Project {
   activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
   deployments      Deployment[]       @relation("ProjectDeployments")
   githubConnection GitHubConnection?
+  webhookId        String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }

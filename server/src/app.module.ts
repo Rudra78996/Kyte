@@ -8,6 +8,8 @@ import { DeploymentsModule } from './deployments/deployments.module';
 import { ServeModule } from './serve/serve.module';
 import { BullModule } from '@nestjs/bullmq';
 
+import { WebhooksModule } from './webhooks/webhooks.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -26,6 +28,7 @@ import { BullModule } from '@nestjs/bullmq';
     ProjectsModule,
     DeploymentsModule,
     ServeModule,
+    WebhooksModule,
   ],
   controllers: [AppController],
   providers: [],
