@@ -21,6 +21,8 @@ export default function ProjectPage() {
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
   }, [projectId]);
 
   useEffect(() => {
@@ -55,6 +57,21 @@ export default function ProjectPage() {
       loadData();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const [enablingWebhook, setEnablingWebhook] = useState(false);
+
+  const enableWebhook = async () => {
+    setEnablingWebhook(true);
+    try {
+      const res = await request('POST', `/projects/${projectId}/webhook/enable`);
+      alert(res.message || 'Webhook enabled successfully!');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to enable webhook');
+    } finally {
+      setEnablingWebhook(false);
     }
   };
 
@@ -100,9 +117,29 @@ export default function ProjectPage() {
             {project.subdomain}.localhost
           </a>
         </div>
-        <Button onClick={triggerDeploy} className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
-          Trigger Deployment
-        </Button>
+        <div className="flex gap-3">
+          {project.webhookId ? (
+            <Button 
+              disabled 
+              variant="outline" 
+              className="border-emerald-600/30 text-emerald-400 bg-emerald-600/10 cursor-default opacity-100"
+            >
+              ✓ Auto-Deploy Enabled
+            </Button>
+          ) : (
+            <Button 
+              onClick={enableWebhook} 
+              disabled={enablingWebhook}
+              variant="outline" 
+              className="border-blue-600/30 text-blue-400 hover:bg-blue-600/10 hover:text-blue-300"
+            >
+              {enablingWebhook ? 'Enabling...' : 'Enable Auto-Deploy'}
+            </Button>
+          )}
+          <Button onClick={triggerDeploy} className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+            Trigger Deployment
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -117,7 +154,12 @@ export default function ProjectPage() {
               >
                 <CardHeader className="p-4">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-mono font-medium text-slate-200">{d.commitSha.slice(0, 7)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-medium text-slate-200">{d.commitSha.slice(0, 7)}</span>
+                      {d.triggerSource === 'WEBHOOK' && (
+                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20">Auto</Badge>
+                      )}
+                    </div>
                     <Badge variant="outline" className={
                       d.status === 'SUCCESS' ? 'bg-emerald-950/30 text-emerald-400 border-emerald-900/50' : 
                       d.status === 'FAILED' ? 'bg-red-950/30 text-red-400 border-red-900/50' : 

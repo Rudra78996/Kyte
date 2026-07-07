@@ -59,9 +59,16 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-slate-100 tracking-tight">Dashboard</h1>
           <p className="text-slate-400">Manage your projects and deployments.</p>
         </div>
-        <Button onClick={logout} variant="outline" className="border-slate-800 text-slate-300 hover:bg-slate-800">
-          Sign Out
-        </Button>
+        <div className="flex gap-4">
+          <Link href="/settings">
+            <Button variant="outline" className="border-slate-800 text-slate-300 hover:bg-slate-800">
+              Settings
+            </Button>
+          </Link>
+          <Button onClick={logout} variant="outline" className="border-slate-800 text-slate-300 hover:bg-slate-800">
+            Sign Out
+          </Button>
+        </div>
       </div>
 
       <Card className="mb-8 bg-slate-900 border-slate-800">

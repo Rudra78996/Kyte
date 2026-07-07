@@ -101,12 +101,18 @@ export class AuthService {
     };
   }
 
-  async me(user: AuthenticatedUser): Promise<{ id: string; email: string }> {
+  async me(user: AuthenticatedUser): Promise<{ id: string; email: string; githubConnected: boolean; githubUsername?: string }> {
     const account = await this.prisma.user.findUnique({
       where: { id: user.id },
       select: {
         id: true,
         email: true,
+        githubConnections: {
+          select: {
+            githubUsername: true
+          },
+          take: 1
+        }
       },
     });
 
@@ -114,7 +120,14 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return account;
+    const githubConn = account.githubConnections?.[0];
+
+    return {
+      id: account.id,
+      email: account.email,
+      githubConnected: !!githubConn,
+      githubUsername: githubConn?.githubUsername || undefined,
+    };
   }
 
   private issueAccessToken(payload: AuthTokenPayload): Promise<string> {
