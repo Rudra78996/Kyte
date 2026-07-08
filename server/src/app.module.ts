@@ -12,16 +12,26 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
 
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import Redis from 'ioredis';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['../.env', '.env'],
     }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100, // 100 requests per minute by default
-    }]),
+    ThrottlerModule.forRootAsync({
+      useFactory: () => ({
+        throttlers: [{
+          ttl: 60000,
+          limit: 100,
+        }],
+        storage: new ThrottlerStorageRedisService(
+          new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+        ),
+      }),
+    }),
     BullModule.forRootAsync({
       useFactory: () => ({
         connection: {

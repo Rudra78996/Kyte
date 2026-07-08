@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
@@ -8,41 +8,70 @@ import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import Redis from 'ioredis';
 
+const MAX_ACTIVE_DEPLOYMENTS = 2;
+const QUEUE_JOB_OPTIONS = {
+  attempts: 2,
+  backoff: { type: 'exponential', delay: 5000 },
+  removeOnComplete: true,
+  removeOnFail: { age: 24 * 3600, count: 100 },
+};
+
 @Injectable()
-export class DeploymentsService implements OnModuleInit {
+export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DeploymentsService.name);
+  private reconcileInterval: NodeJS.Timeout;
+  private redisClient: Redis;
 
   constructor(
     private prisma: PrismaService,
     private projectsService: ProjectsService,
     @InjectQueue('builds') private queue: Queue,
-  ) {}
+  ) {
+    this.redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+  }
 
   onModuleInit() {
-    // Reconcile stuck jobs every 5 minutes
-    setInterval(async () => {
+    this.reconcileInterval = setInterval(async () => {
+      // Leader election lock using redis SETNX
+      const lockKey = 'deployments:reconciler:lock';
+      const lockAcquired = await this.redisClient.set(lockKey, 'locked', 'PX', 10000, 'NX');
+      if (!lockAcquired) return;
+
       try {
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
         const stuckDeployments = await this.prisma.deployment.findMany({
           where: {
             status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
-            deployedAt: { lt: fifteenMinutesAgo },
+            updatedAt: { lt: fifteenMinutesAgo },
           },
         });
 
         if (stuckDeployments.length > 0) {
           this.logger.warn(`Found ${stuckDeployments.length} stuck deployments. Marking as FAILED.`);
-          await this.prisma.deployment.updateMany({
-            where: {
-              id: { in: stuckDeployments.map(d => d.id) }
-            },
-            data: { status: 'FAILED' }
-          });
+          for (const dep of stuckDeployments) {
+            await this.prisma.deployment.update({
+              where: { id: dep.id },
+              data: { status: 'FAILED' }
+            });
+            try {
+              const job = await this.queue.getJob(dep.id);
+              if (job) await job.remove();
+            } catch (e) {
+              this.logger.error(`Failed to remove job for deployment ${dep.id}`);
+            }
+          }
         }
       } catch (err) {
         this.logger.error('Failed to reconcile stuck jobs', err);
       }
     }, 5 * 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    if (this.reconcileInterval) {
+      clearInterval(this.reconcileInterval);
+    }
+    this.redisClient.quit();
   }
 
   async create(userId: string, projectId: string, dto: CreateDeploymentDto) {
@@ -62,35 +91,31 @@ export class DeploymentsService implements OnModuleInit {
       return existingPending;
     }
 
-    // Limit active deployments per project to prevent DDoS / queue starvation
-    const activeDeploymentsCount = await this.prisma.deployment.count({
-      where: {
-        projectId,
-        status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+    const deployment = await this.prisma.$transaction(async (tx) => {
+      const activeDeploymentsCount = await tx.deployment.count({
+        where: {
+          projectId,
+          status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+        }
+      });
+
+      if (activeDeploymentsCount >= MAX_ACTIVE_DEPLOYMENTS) {
+        throw new BadRequestException('Too many active deployments for this project. Please wait for them to finish.');
       }
-    });
 
-    if (activeDeploymentsCount >= 2) {
-      throw new BadRequestException('Too many active deployments for this project. Please wait for them to finish.');
-    }
-
-    if (existingPending) {
-      return existingPending;
-    }
-
-    // Create deployment record
-    const deployment = await this.prisma.deployment.create({
-      data: {
-        projectId,
-        repoUrl: dto.repoUrl,
-        branch: dto.branch,
-        commitSha: dto.commitSha,
-        commitMessage: dto.commitMessage,
-        deployedBy: userId,
-        status: 'QUEUED',
-        triggerSource: (dto.trigger || 'MANUAL').toUpperCase() as any,
-        s3Prefix: `${projectId}/${Date.now()}`,
-      },
+      return tx.deployment.create({
+        data: {
+          projectId,
+          repoUrl: dto.repoUrl,
+          branch: dto.branch,
+          commitSha: dto.commitSha,
+          commitMessage: dto.commitMessage,
+          deployedBy: userId,
+          status: 'QUEUED',
+          triggerSource: (dto.trigger || 'MANUAL').toUpperCase() as any,
+          s3Prefix: `${projectId}/${Date.now()}`,
+        },
+      });
     });
 
     // Enqueue job in Phase 3
@@ -100,10 +125,8 @@ export class DeploymentsService implements OnModuleInit {
       branch: deployment.branch,
       commitSha: deployment.commitSha,
     }, {
-      attempts: 2,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: true,
-      removeOnFail: { age: 24 * 3600, count: 100 },
+      jobId: deployment.id,
+      ...QUEUE_JOB_OPTIONS,
     });
 
     return deployment;
@@ -210,10 +233,8 @@ export class DeploymentsService implements OnModuleInit {
       branch: rollbackDeploy.branch,
       commitSha: rollbackDeploy.commitSha,
     }, {
-      attempts: 2,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: true,
-      removeOnFail: { age: 24 * 3600, count: 100 },
+      jobId: rollbackDeploy.id,
+      ...QUEUE_JOB_OPTIONS,
     });
 
     return rollbackDeploy;
