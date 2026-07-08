@@ -23,16 +23,31 @@ export class ServeService {
   }
 
   async serveFile(projectSlug: string, path: string, res: Response) {
+    let prefix: string | null = null;
+
     const project = await this.prisma.project.findUnique({
       where: { subdomain: projectSlug },
       include: { activeDeploy: true },
     });
 
-    if (!project || !project.activeDeploy) {
-      throw new NotFoundException('Project or active deployment not found');
+    if (project) {
+      if (!project.activeDeploy) {
+        throw new NotFoundException('Project has no active deployment');
+      }
+      prefix = project.activeDeploy.s3Prefix;
+    } else {
+      const deployment = await this.prisma.deployment.findUnique({
+        where: { id: projectSlug },
+      });
+      if (deployment) {
+        prefix = deployment.s3Prefix;
+      }
     }
 
-    const prefix = project.activeDeploy.s3Prefix;
+    if (!prefix) {
+      throw new NotFoundException('Project or deployment not found');
+    }
+
     // Default to index.html if path is empty or a directory
     let targetPath = path || 'index.html';
 

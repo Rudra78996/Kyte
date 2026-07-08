@@ -7,7 +7,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { BorderBeam } from '@/components/ui/border-beam';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -95,7 +94,6 @@ export default function LoginPage() {
             </div>
           </CardFooter>
         </Card>
-        <BorderBeam size={100} duration={12} colorFrom="#000000" colorTo="#666666" />
       </div>
     </div>
   );

@@ -40,10 +40,20 @@ const worker = new Worker('builds', async (job: Job) => {
   const buildDir = `/tmp/builds/${deploymentId}`;
   await fs.ensureDir(buildDir);
 
+  let logSequence = 0;
   const publishLog = (chunk: string | Buffer, stream: 'STDOUT' | 'STDERR') => {
     const text = chunk.toString();
     console.log(`[${deploymentId}] [${stream}] ${text.trim()}`);
     redis.publish(`deploy:${deploymentId}`, JSON.stringify({ stream, text }));
+    const currentSeq = logSequence++;
+    prisma.deploymentLogChunk.create({
+      data: {
+        deploymentId,
+        sequence: currentSeq,
+        content: text,
+        stream
+      }
+    }).catch(err => console.error(`[worker] failed to save log chunk:`, err.message));
   };
 
   try {
