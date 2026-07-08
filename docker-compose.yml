@@ -33,8 +33,14 @@ services:
   worker:
     build:
       context: ./server
-      dockerfile: Dockerfile
-    command: ["npm", "run", "worker"]
+      dockerfile: Dockerfile.worker
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    command: ["/app/start-worker.sh"]
     env_file:
       - .env
     environment:

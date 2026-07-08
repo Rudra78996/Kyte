@@ -1,4 +1,5 @@
 import { Controller, Post, Headers, Body, UseGuards, HttpCode } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { WebhooksService } from './webhooks.service';
 import { GithubWebhookGuard } from './github-webhook.guard';
 
@@ -7,6 +8,7 @@ export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 
   @Post('github')
+  @SkipThrottle()
   @UseGuards(GithubWebhookGuard)
   @HttpCode(200)
   async handleGithubWebhook(

@@ -47,42 +47,35 @@ const worker = new Worker('builds', async (job: Job) => {
   };
 
   try {
-    const runNsjail = false; // We can mock it or run real nsjail
-    
-    if (runNsjail) {
-      await execa('nsjail', [
-        '--mode', 'o',
-        '--chroot', buildDir,
-        '--user', '99', '--group', '99',
-        '--time_limit', '300',
-        '--rlimit_cpu', '30',
-        '--rlimit_as', '536870912',
-        '--disable_clone_newnet',
+    const nsjailProcess = execa('nsjail', [
+        '-Mo', // Mount proc/sys and run once
+        '--chroot', '', // Let nsjail create an empty chroot internally
+        '--disable_proc', // Docker masks /proc, so disable nsjail procfs mount
+        '--bindmount_ro', '/proc', // Bind-mount the container's existing /proc
+        '--bindmount_ro', '/bin',
+        '--bindmount_ro', '/lib',
+        '--bindmount_ro', '/usr',
+        '--bindmount_ro', '/etc',
+        '--bindmount_ro', '/lib64',
+        '--bindmount', '/dev',
+        '--bindmount', `${buildDir}:/build`, // Mount only the build dir read-write
+        '--user', '99999', '--group', '99999', // Run as nobody
+        '--time_limit', '300', // 5 minute max
+        '--rlimit_as', 'inf', // Disable virtual memory limit for WASM
+        '--rlimit_nofile', '4096', // Max 4096 open files (npm needs this)
+        '--rlimit_fsize', '1024', // 1GB max file size
+        '--rlimit_nproc', '512', // Max processes
+        '--disable_clone_newnet', // allow internet access
+        '--env', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        '--env', 'HOME=/build', // npm needs a writable home
         '--',
         '/bin/sh', '-c',
-        `git clone --depth 1 ${repoUrl} /app && cd /app && npm install --ignore-scripts && npm run build`
-      ], {
-        all: true
-      }).on('all', (chunk: any) => publishLog(chunk || '', 'STDOUT'));
-    } else {
-      publishLog('Starting clone...\n', 'STDOUT');
-      const clone = execa('git', ['clone', '--depth', '1', repoUrl, `${buildDir}/app`]);
-      clone.stdout?.on('data', (c: any) => publishLog(c, 'STDOUT'));
-      clone.stderr?.on('data', (c: any) => publishLog(c, 'STDERR'));
-      await clone;
-
-      publishLog('Starting install...\n', 'STDOUT');
-      const install = execa('npm', ['install', '--ignore-scripts'], { cwd: `${buildDir}/app` });
-      install.stdout?.on('data', (c: any) => publishLog(c, 'STDOUT'));
-      install.stderr?.on('data', (c: any) => publishLog(c, 'STDERR'));
-      await install;
-
-      publishLog('Starting build...\n', 'STDOUT');
-      const build = execa('npm', ['run', 'build'], { cwd: `${buildDir}/app` });
-      build.stdout?.on('data', (c: any) => publishLog(c, 'STDOUT'));
-      build.stderr?.on('data', (c: any) => publishLog(c, 'STDERR'));
-      await build;
-    }
+        'git clone --depth 1 "$1" /build/app && cd /build/app && npm install --ignore-scripts && npm run build',
+        '--', repoUrl
+      ]);
+      nsjailProcess.stdout?.on('data', (chunk: any) => publishLog(chunk || '', 'STDOUT'));
+      nsjailProcess.stderr?.on('data', (chunk: any) => publishLog(chunk || '', 'STDERR'));
+      await nsjailProcess;
     
     publishLog('Starting upload...\n', 'STDOUT');
     await prisma.deployment.update({

@@ -1,3 +1,4 @@
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   Controller,
   Post,
@@ -62,8 +63,13 @@ export class DeploymentsController {
     return this.deploymentsService.rollback(userId, projectId, deploymentId);
   }
 
+  @SkipThrottle()
   @Sse(':deploymentId/logs')
-  streamLogs(@Param('deploymentId') deploymentId: string): Observable<MessageEvent> {
-    return this.deploymentsService.streamLogs(deploymentId);
+  async streamLogs(
+    @CurrentUser('id') userId: string,
+    @Param('projectId') projectId: string,
+    @Param('deploymentId') deploymentId: string,
+  ): Promise<Observable<MessageEvent>> {
+    return this.deploymentsService.streamLogs(userId, projectId, deploymentId);
   }
 }

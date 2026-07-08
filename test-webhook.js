@@ -8,7 +8,7 @@ const payload = {
   after: '1234567890abcdef1234567890abcdef12345678',
   deleted: false,
   repository: {
-    html_url: 'https://github.com/Rudra78996/Kyte',
+    html_url: 'https://github.com/Rudra78996/Test',
   },
   head_commit: {
     message: 'Test webhook push'
