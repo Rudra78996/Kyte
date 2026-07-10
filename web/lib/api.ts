@@ -1,31 +1,10 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
 
-export function getToken() {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('token');
-  }
-  return null;
-}
-
-export function setToken(token: string) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('token', token);
-  }
-}
-
-export function logout() {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('token');
-    window.location.reload();
-  }
-}
-
-export async function request(method: string, path: string, body: any = null) {
-  const token = getToken();
+export async function request(method: string, path: string, body: any = null, token?: string | null) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -37,7 +16,7 @@ export async function request(method: string, path: string, body: any = null) {
   });
 
   if (res.status === 401) {
-    logout();
+    // Clerk handles redirects via middleware
     throw new Error('Unauthorized');
   }
 
