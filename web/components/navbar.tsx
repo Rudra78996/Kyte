@@ -4,8 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 
 export default function Navbar() {
+  const { isSignedIn } = useAuth();
+
   return (
     <header className="w-full bg-transparent pt-4 relative z-50">
       <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-6 lg:px-12">
@@ -43,14 +46,24 @@ export default function Navbar() {
 
         {/* Right: Auth */}
         <div className="flex items-center gap-6">
-          <Link href="/login" className="text-[13px] font-medium text-neutral-300 hover:text-white transition-colors hidden sm:block">
-            Login
-          </Link>
-          <Link href="/login">
-            <Button className="h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[13px] px-5 font-medium border-0 shadow-none">
-              Signup
-            </Button>
-          </Link>
+          {!isSignedIn ? (
+            <>
+              <Link href="/sign-in" className="text-[13px] font-medium text-neutral-300 hover:text-white transition-colors hidden sm:block">
+                Login
+              </Link>
+              <Link href="/sign-up">
+                <Button className="h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[13px] px-5 font-medium border-0 shadow-none">
+                  Signup
+                </Button>
+              </Link>
+            </>
+          ) : (
+            <Link href="/dashboard">
+              <Button className="h-8 rounded-full bg-white hover:bg-neutral-200 text-black text-[13px] px-5 font-medium border-0 shadow-none">
+                Dashboard
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

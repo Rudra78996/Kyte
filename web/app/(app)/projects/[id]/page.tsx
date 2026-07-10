@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from 'react';
-import { request, getToken } from '@/lib/api';
+import { useApiRequest, useApiToken } from '@/hooks/use-api';
 import { useParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { ExternalLink, RefreshCw, Terminal, GitBranch } from 'lucide-react';
 export default function ProjectPage() {
   const params = useParams();
   const projectId = params.id as string;
+  const apiRequest = useApiRequest();
+  const getClerkToken = useApiToken();
 
   const [project, setProject] = useState<any>(null);
   const [deployments, setDeployments] = useState<any[]>([]);
@@ -30,10 +32,10 @@ export default function ProjectPage() {
 
   const loadData = async () => {
     try {
-      const proj = await request('GET', `/projects`);
+      const proj = await apiRequest('GET', `/projects`);
       const found = proj.projects.find((p: any) => p.id === projectId);
       setProject(found);
-      const deps = await request('GET', `/projects/${projectId}/deployments`);
+      const deps = await apiRequest('GET', `/projects/${projectId}/deployments`);
       setDeployments(deps.deployments || []);
       if (deps.deployments.length > 0) {
         setActiveDeploy((prev: any) => prev ? prev : deps.deployments[0]);
@@ -43,7 +45,7 @@ export default function ProjectPage() {
 
   const triggerDeploy = async () => {
     try {
-      const res = await request('POST', `/projects/${projectId}/deployments`, {
+      const res = await apiRequest('POST', `/projects/${projectId}/deployments`, {
         repoUrl: project.repoUrl, branch: 'main', commitSha: 'HEAD',
       });
       setActiveDeploy(res);
@@ -56,7 +58,7 @@ export default function ProjectPage() {
   const enableWebhook = async () => {
     setEnablingWebhook(true);
     try {
-      const res = await request('POST', `/projects/${projectId}/webhook/enable`);
+      const res = await apiRequest('POST', `/projects/${projectId}/webhook/enable`);
       alert(res.message || 'Webhook enabled!');
       loadData();
     } catch (err: any) { alert(err.message || 'Failed'); }
@@ -64,17 +66,22 @@ export default function ProjectPage() {
   };
 
   useEffect(() => {
-    if (!activeDeploy || !getToken()) return;
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
-    const es = new EventSource(`${API_BASE}/projects/${projectId}/deployments/${activeDeploy.id}/logs?token=${getToken()}`);
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setLogs(prev => [...prev, data]);
-        if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) loadData();
-      } catch (e) {}
-    };
-    return () => es.close();
+    if (!activeDeploy) return;
+    let es: EventSource;
+    (async () => {
+      const token = await getClerkToken();
+      if (!token) return;
+      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
+      es = new EventSource(`${API_BASE}/projects/${projectId}/deployments/${activeDeploy.id}/logs?token=${token}`);
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setLogs(prev => [...prev, data]);
+          if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) loadData();
+        } catch (e) {}
+      };
+    })();
+    return () => es?.close();
   }, [activeDeploy?.id]);
 
   if (!project) return <div className="py-24 text-center text-muted-foreground animate-pulse">Loading…</div>;
@@ -87,7 +94,7 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full">
+    <div className="flex flex-1 flex-col gap-6 p-4 pt-0 w-full">
       {/* Header & Actions */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

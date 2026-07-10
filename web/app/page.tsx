@@ -84,8 +84,8 @@ export default function LandingPage() {
 
           {/* CTA */}
           <div className="mt-8 md:mt-10 flex flex-col items-center gap-4">
-            <Button className="inline-flex items-center justify-center gap-1 whitespace-nowrap text-sm transition-colors cursor-pointer duration-80 relative active:scale-[0.99] bg-white text-black hover:bg-neutral-200 font-medium shadow-[0_0px_1px_rgba(0,0,0,0.45),0_2px_3px_rgba(0,0,0,0.05),0_0px_1px_rgba(0,0,0,0.07)] h-11 rounded-lg px-8 w-auto border-0">
-              Start deploying for free <ArrowRight className="size-4" />
+            <Button nativeButton={false} render={<Link href="/dashboard" />} className="inline-flex items-center justify-center gap-1 whitespace-nowrap text-sm transition-colors cursor-pointer duration-80 relative active:scale-[0.99] bg-white text-black hover:bg-neutral-200 font-medium shadow-[0_0px_1px_rgba(0,0,0,0.45),0_2px_3px_rgba(0,0,0,0.05),0_0px_1px_rgba(0,0,0,0.07)] h-11 rounded-lg px-8 w-auto border-0">
+                Start deploying for free <ArrowRight className="size-4" />
             </Button>
             <p className="font-sans font-normal text-[13px] text-neutral-500 text-center">
               Unlimited Previews · No Credit Card · 2-Minute Setup

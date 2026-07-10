@@ -1,27 +1,26 @@
 "use client";
 
 import { useEffect, useState, Suspense } from 'react';
-import { request, getToken } from '@/lib/api';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useApiRequest } from '@/hooks/use-api';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
 function SettingsContent() {
-  const router = useRouter();
+  const apiRequest = useApiRequest();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getToken()) { router.push('/login'); return; }
     loadProfile();
   }, []);
 
   const loadProfile = async () => {
     try {
-      const data = await request('GET', '/auth/me');
+      const data = await apiRequest('GET', '/auth/me');
       setUser(data);
     } catch (err: any) { console.error(err); }
     finally { setLoading(false); }
@@ -29,7 +28,7 @@ function SettingsContent() {
 
   const connectGithub = async () => {
     try {
-      const res = await request('GET', '/auth/github/connect');
+      const res = await apiRequest('GET', '/auth/github/connect');
       if (res.url) window.location.href = res.url;
     } catch (err: any) {
       alert('Failed to initiate GitHub connection: ' + err.message);
