@@ -94,7 +94,7 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 pt-0 w-full">
+    <div className="flex flex-1 flex-col gap-6 w-full">
       {/* Header & Actions */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

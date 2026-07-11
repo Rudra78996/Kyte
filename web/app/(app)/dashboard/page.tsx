@@ -44,7 +44,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+    <div className="flex flex-1 flex-col gap-6 w-full">
       {/* Actions bar */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="relative w-full max-w-[400px]">
@@ -65,42 +65,11 @@ export default function Dashboard() {
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger>
-              <div className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-[38px] px-3.5 rounded-md text-sm font-medium transition-colors cursor-pointer">
-                Add New <ChevronDown className="w-4 h-4 opacity-50" />
-              </div>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-base">
-                  <Plus className="size-4" />
-                  Import a Repository
-                </DialogTitle>
-                <DialogDescription>
-                  Paste a public GitHub URL to import and deploy.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={createProject} className="flex flex-col gap-4 mt-2">
-                <div className="relative flex-1">
-                  <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <input
-                    type="url"
-                    placeholder="https://github.com/user/repo"
-                    required
-                    value={newProjectRepo}
-                    onChange={e => setNewProjectRepo(e.target.value)}
-                    className="w-full bg-muted/50 border border-border rounded-md py-2 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-all"
-                  />
-                </div>
-                <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-[38px] px-3.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50">
-                  {loading ? 'Importing…' : 'Deploy'}
-                  {!loading && <ArrowRight className="size-4" />}
-                </button>
-                {error && <p className="text-destructive text-sm mt-1">{error}</p>}
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Link href="/new">
+            <div className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-[38px] px-3.5 rounded-md text-sm font-medium transition-colors cursor-pointer">
+              Add New <ChevronDown className="w-4 h-4 opacity-50" />
+            </div>
+          </Link>
         </div>
       </div>
 
