@@ -35,6 +35,11 @@ model Project {
   deployments      Deployment[]       @relation("ProjectDeployments")
   githubConnection GitHubConnection?
   webhookId        String?
+  preset           String?            @default("React")
+  rootDirectory    String?            @default("./")
+  buildCommand     String?            @default("npm run build")
+  outputDirectory  String?            @default("dist")
+  branch           String?            @default("main")
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }

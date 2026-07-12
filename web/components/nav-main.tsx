@@ -27,7 +27,7 @@ export function NavMain({
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Focus search if user presses 'f' and not currently typing in an input
-      if (e.key.toLowerCase() === 'f' && 
+      if (e.key && e.key.toLowerCase() === 'f' && 
           document.activeElement?.tagName !== 'INPUT' && 
           document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault()

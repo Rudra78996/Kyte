@@ -54,29 +54,25 @@ export class WebhooksService {
 
     const projects = await this.prisma.project.findMany({
       where: {
-        // basic match
         repoUrl: {
           contains: cleanRepoUrl,
           mode: 'insensitive'
-        }
+        },
+        branch: branch // only match projects deployed from this branch
       }
     });
 
     if (projects.length === 0) {
-      this.logger.log(`No projects found for repo: ${repoUrl}`);
+      this.logger.log(`No projects found for repo: ${repoUrl} and branch: ${branch}`);
       return;
     }
-
-    // In a real app, projects would have a 'branch' field.
-    // Assuming the user configures the branch during deployment.
-    // Let's create deployments for these projects.
     
     for (const project of projects) {
       // Create deployment record
       const deployment = await this.prisma.deployment.create({
         data: {
           projectId: project.id,
-          repoUrl: project.repoUrl, // use the one stored in project
+          repoUrl: project.repoUrl,
           branch: branch,
           commitSha: commitSha,
           commitMessage: commitMessage,
