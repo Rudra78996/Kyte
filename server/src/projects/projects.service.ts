@@ -79,6 +79,12 @@ export class ProjectsService {
       data: {
         name: dto.name,
         description: dto.description,
+        repoUrl: dto.repoUrl,
+        preset: dto.preset,
+        rootDirectory: dto.rootDirectory,
+        buildCommand: dto.buildCommand,
+        outputDirectory: dto.outputDirectory,
+        branch: dto.branch,
       },
     });
   }
