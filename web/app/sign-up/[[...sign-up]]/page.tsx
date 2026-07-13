@@ -50,7 +50,7 @@ export default function Page() {
       }
       
       setOtpSent(true);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setErrorMsg('An error occurred during sign up. Please check your details and try again.');
     } finally {
@@ -75,7 +75,7 @@ export default function Page() {
           }
         });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setErrorMsg('Invalid verification code. Please try again.');
     } finally {

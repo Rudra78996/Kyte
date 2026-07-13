@@ -52,14 +52,14 @@ export default function Navbar() {
                 Login
               </Link>
               <Link href="/sign-up">
-                <Button className="h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[13px] px-5 font-medium border-0 shadow-none">
+                <Button className="h-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] px-6 font-medium border-0 shadow-none">
                   Signup
                 </Button>
               </Link>
             </>
           ) : (
             <Link href="/dashboard">
-              <Button className="h-8 rounded-full bg-white hover:bg-neutral-200 text-black text-[13px] px-5 font-medium border-0 shadow-none">
+              <Button className="h-8 rounded-full bg-white hover:bg-neutral-200 text-black text-[13px] px-6 font-medium border-0 shadow-none">
                 Dashboard
               </Button>
             </Link>

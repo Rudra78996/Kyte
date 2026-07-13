@@ -1,7 +1,7 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Terminal, CheckCircle2, AlertCircle, FileCode2, Package, Globe } from "lucide-react";
+import { BookOpen, FileCode2, Package, Globe } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 

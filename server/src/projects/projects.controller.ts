@@ -30,6 +30,7 @@ export class ProjectsController {
   @Get()
   async findAll(
     @CurrentUser('id') userId: string,
+    @Query('organizationId') organizationId?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ) {
@@ -37,6 +38,7 @@ export class ProjectsController {
       userId,
       skip ? parseInt(skip) : 0,
       take ? parseInt(take) : 20,
+      organizationId,
     );
   }
 
@@ -55,6 +57,14 @@ export class ProjectsController {
     @Body() dto: UpdateProjectDto,
   ) {
     return this.projectsService.update(userId, projectId, dto);
+  }
+
+  @Get(':id/metrics')
+  async getMetrics(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.getMetrics(userId, projectId);
   }
 
   @Post(':id/webhook/enable')

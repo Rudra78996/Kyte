@@ -28,7 +28,7 @@ export default function CustomDomainDocs() {
           </CardHeader>
           <CardContent className="space-y-4 text-neutral-300 text-sm">
             <p>
-              To add a custom domain to your project, you will need to add a CNAME record with your DNS provider (e.g. Cloudflare, Namecheap, Route53) pointing to your project's default Kyte URL.
+              To add a custom domain to your project, you will need to add a CNAME record with your DNS provider (e.g. Cloudflare, Namecheap, Route53) pointing to your project&apos;s default Kyte URL.
             </p>
             <div className="bg-neutral-900 px-3 py-2.5 rounded border border-neutral-800 font-mono text-[13px] text-neutral-300 overflow-x-auto">
               CNAME &nbsp;&nbsp;&nbsp; @ &nbsp;&nbsp;&nbsp; your-project.kyte.app

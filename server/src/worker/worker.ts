@@ -127,12 +127,32 @@ const worker = new Worker('builds', async (job: Job) => {
       where: { id: deployment.projectId },
       data: { activeDeployId: deploymentId }
     });
+    
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        userId: deployment.project.userId,
+        title: 'Deployment successful',
+        message: `${deployment.project.name} is now live (branch: ${deployment.branch})`,
+        type: 'SUCCESS'
+      }
+    });
 
   } catch (err: any) {
     publishLog(`Build failed: ${err.message}\n`, 'STDERR');
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: { status: 'FAILED' }
+    });
+    
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        userId: deployment.project.userId,
+        title: 'Deployment failed',
+        message: `${deployment.project.name} failed to build (branch: ${deployment.branch})`,
+        type: 'ERROR'
+      }
     });
   } finally {
     await fs.remove(buildDir).catch(() => {});

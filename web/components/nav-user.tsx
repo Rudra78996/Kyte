@@ -1,5 +1,7 @@
 "use client"
 
+import { Badge } from "@/components/ui/badge"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,27 +18,54 @@ import {
 } from "@/components/ui/sidebar"
 import { useUser, useClerk } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
-import BoringAvatar from "boring-avatars"
+import { UserAvatar } from "@/components/user-avatar"
+import { useApiRequest } from "@/hooks/use-api"
+import { useEffect, useState, useRef } from "react"
 import {
   BadgeCheck,
   Bell,
   MoreHorizontal,
   LogOut,
   FileText,
-  Monitor,
-  Sun,
-  Moon,
-  SunMoon
+  CheckCircle2,
+  AlertCircle,
+  Info
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const { isLoaded, user } = useUser()
   const { signOut } = useClerk()
   const router = useRouter()
-  const { theme, setTheme } = useTheme()
+  const apiRequest = useApiRequest()
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [hasUnread, setHasUnread] = useState(false)
+  const lastLenRef = useRef(0)
+
+  useEffect(() => {
+    if (notifications.length > lastLenRef.current) {
+      setHasUnread(true)
+    }
+    lastLenRef.current = notifications.length
+  }, [notifications.length])
+
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const fetchNotifications = async () => {
+      try {
+        const data = await apiRequest('GET', '/notifications');
+        if (data.notifications) {
+          setNotifications(data.notifications);
+        }
+      } catch (e) {
+        console.error("Failed to fetch notifications");
+      }
+    };
+    
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
+  }, [isLoaded, user, apiRequest]);
 
   if (!isLoaded || !user) return null
 
@@ -44,24 +73,26 @@ export function NavUser() {
   const email = user.primaryEmailAddress?.emailAddress || ''
 
   return (
-    <SidebarMenu>
+    <SidebarMenu data-slot="nav-user">
       <SidebarMenuItem>
-        <div className="flex items-center justify-between w-full p-2 mb-2">
+        <div className="flex w-full items-center justify-between rounded-md p-2">
           <div className="flex items-center gap-2 overflow-hidden">
-            <BoringAvatar size={28} name={name} variant="beam" colors={["#00686c","#32c2b9","#edecb3","#fad928","#ff9915"]} />
-            <span className="text-sm font-medium text-neutral-300 truncate">{name}</span>
+            <div className="rounded-full border border-border p-0.5 shrink-0 bg-background/50 shadow-sm flex items-center justify-center">
+              <UserAvatar size={26} name={name} />
+            </div>
+            <span className="truncate text-sm font-medium text-sidebar-foreground">{name}</span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className="flex items-center justify-center size-7 rounded-full border border-neutral-800 hover:bg-neutral-800 text-neutral-400 transition-colors outline-none" />
+                  <button className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground outline-none" />
                 }
               >
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-56 rounded-lg border-neutral-800 bg-neutral-950 text-neutral-200 shadow-xl"
+                className="w-56"
                 side={isMobile ? "bottom" : "top"}
                 align="end"
                 sideOffset={8}
@@ -69,88 +100,86 @@ export function NavUser() {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="p-0 font-normal">
                     <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                      <BoringAvatar size={32} name={name} variant="beam" colors={["#00686c","#32c2b9","#edecb3","#fad928","#ff9915"]} />
+                      <div className="rounded-full border border-border p-0.5 shrink-0 bg-background/50 shadow-sm flex items-center justify-center">
+                        <UserAvatar size={30} name={name} />
+                      </div>
                       <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold text-white">{name}</span>
-                        <span className="truncate text-xs text-neutral-400">{email}</span>
+                        <span className="truncate font-semibold">{name}</span>
+                        <span className="truncate text-xs text-muted-foreground">{email}</span>
                       </div>
                     </div>
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator className="bg-neutral-800" />
+                <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => router.push('/dashboard/settings')} className="hover:bg-neutral-800 focus:bg-neutral-800 cursor-pointer">
+                  <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
                     <BadgeCheck className="mr-2 size-4" />
                     Manage Account
                   </DropdownMenuItem>
-                  
-                  {/* Theme Switcher Item */}
-                  <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none">
-                    <div className="flex items-center">
-                      <SunMoon className="mr-2 size-4" />
-                      <span>Theme</span>
-                    </div>
-                    <div className="flex items-center rounded-full border border-neutral-800 bg-black p-0.5">
-                      <button 
-                        onClick={(e) => { e.preventDefault(); setTheme('system'); }}
-                        className={cn("flex items-center justify-center size-6 rounded-full transition-colors", theme === 'system' ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-neutral-300")}
-                      >
-                        <Monitor className="size-3" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.preventDefault(); setTheme('light'); }}
-                        className={cn("flex items-center justify-center size-6 rounded-full transition-colors", theme === 'light' ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-neutral-300")}
-                      >
-                        <Sun className="size-3" />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.preventDefault(); setTheme('dark'); }}
-                        className={cn("flex items-center justify-center size-6 rounded-full transition-colors", theme === 'dark' ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-neutral-300")}
-                      >
-                        <Moon className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <DropdownMenuItem className="hover:bg-neutral-800 focus:bg-neutral-800 cursor-pointer">
+                  <DropdownMenuItem className="cursor-pointer">
                     <FileText className="mr-2 size-4" />
                     Docs
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator className="bg-neutral-800" />
-                <DropdownMenuItem className="text-red-500 hover:text-red-400 focus:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 cursor-pointer" onClick={() => signOut()}>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" className="cursor-pointer" onClick={() => signOut()}>
                   <LogOut className="mr-2 size-4" />
                   Log out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => { if (open) setHasUnread(false) }}>
               <DropdownMenuTrigger
                 render={
-                  <button className="flex items-center justify-center size-7 rounded-full border border-neutral-800 hover:bg-neutral-800 text-neutral-400 transition-colors outline-none" />
+                  <button className="relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground outline-none" />
                 }
               >
                 <Bell className="size-3.5" />
+                {hasUnread && (
+                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-red-500 ring-2 ring-sidebar" />
+                )}
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-64 rounded-lg border-neutral-800 bg-neutral-950 text-neutral-200 shadow-xl p-3"
+                className="w-80 p-0 overflow-hidden"
                 side={isMobile ? "bottom" : "top"}
                 align="end"
                 sideOffset={8}
               >
-                <div className="font-semibold text-sm mb-2 text-white">Notifications</div>
-                <div className="text-xs text-neutral-400 flex flex-col gap-2">
-                  <div className="p-2 rounded bg-neutral-900 border border-neutral-800">
-                    <p className="text-white mb-1 text-sm font-medium">Deployment successful</p>
-                    <p>production branch is live</p>
-                    <p className="text-[10px] mt-1 text-neutral-500">2 hours ago</p>
-                  </div>
-                  <div className="p-2 rounded bg-neutral-900 border border-neutral-800">
-                    <p className="text-white mb-1 text-sm font-medium">Welcome to Kyte</p>
-                    <p>Start building your first project</p>
-                    <p className="text-[10px] mt-1 text-neutral-500">1 day ago</p>
-                  </div>
+                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+                  <span className="text-sm font-medium">Notifications</span>
+                  {notifications.length > 0 && (
+                    <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-transparent border-transparent text-muted-foreground">
+                      {notifications.length}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3 p-3 max-h-[350px] overflow-y-auto bg-muted/10">
+                  {notifications.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No new notifications</div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div key={notif.id} className="flex gap-3 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:bg-muted/50 cursor-default">
+                        <div className="shrink-0 mt-0.5">
+                          {notif.type === 'SUCCESS' ? (
+                            <CheckCircle2 className="size-4 text-emerald-500" />
+                          ) : notif.type === 'ERROR' ? (
+                            <AlertCircle className="size-4 text-red-500" />
+                          ) : (
+                            <Info className="size-4 text-foreground" />
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-none text-foreground">
+                            {notif.title}
+                          </p>
+                          <p className="text-[13px] text-muted-foreground leading-snug">
+                            {notif.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>

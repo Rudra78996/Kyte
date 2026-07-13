@@ -7,6 +7,7 @@ export class CreateProjectDto {
   buildCommand?: string;
   outputDirectory?: string;
   branch?: string;
+  organizationId?: string;
 }
 
 export class UpdateProjectDto {

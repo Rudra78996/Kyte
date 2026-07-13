@@ -1,94 +1,225 @@
 "use client";
 
-import { useApiRequest } from '@/hooks/use-api';
-import Link from 'next/link';
-import { Plus, ArrowRight, Activity, Zap, Box, Cloud } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Box, ChevronRight, GitBranch, GitCommitHorizontal, Plus, Rocket, Settings2 } from "lucide-react";
+import { useApiRequest } from "@/hooks/use-api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ProjectAvatar } from "@/components/project-avatar";
+
+type DeploymentStatus = "QUEUED" | "BUILDING" | "UPLOADING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "CANCELED";
+
+type Deployment = {
+  id: string;
+  projectId: string;
+  status: DeploymentStatus;
+  commitSha: string;
+  commitMessage?: string | null;
+  branch: string;
+  triggerSource?: "MANUAL" | "WEBHOOK";
+  deployedAt: string;
+  updatedAt: string;
+};
+
+type Project = {
+  id: string;
+  name: string;
+  subdomain: string;
+  preset?: string | null;
+  branch?: string | null;
+  buildCommand?: string | null;
+  outputDirectory?: string | null;
+  updatedAt: string;
+};
+
+type ProjectWithDeployment = Project & { latestDeployment?: Deployment };
 
 export default function Dashboard() {
   const apiRequest = useApiRequest();
-  const [projectCount, setProjectCount] = useState(0);
+  const [projects, setProjects] = useState<ProjectWithDeployment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const loadWorkspace = useCallback(async () => {
+    await Promise.resolve();
+    setLoading(true);
+    try {
+      // First fetch organizations to scope projects to the active org
+      const orgsResponse = await apiRequest("GET", "/organizations") as { organizations?: { id: string }[] };
+      const orgs = orgsResponse.organizations || [];
+      
+      const savedOrgId = typeof window !== 'undefined' ? localStorage.getItem("kyte-active-org") : null;
+      const orgId = savedOrgId && orgs.find(o => o.id === savedOrgId) 
+        ? savedOrgId 
+        : (orgs.length > 0 ? orgs[0].id : null);
+
+      const projectsResponse = await apiRequest("GET", orgId ? `/projects?organizationId=${orgId}` : "/projects") as { projects?: Project[] };
+      const fetchedProjects = projectsResponse.projects || [];
+      const rows = await Promise.all(fetchedProjects.map(async (project) => {
+        try {
+          const response = await apiRequest("GET", `/projects/${project.id}/deployments`) as { deployments?: Deployment[] };
+          return { ...project, latestDeployment: response.deployments?.[0] };
+        } catch {
+          return project;
+        }
+      }));
+      setProjects(rows);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiRequest]);
 
   useEffect(() => {
-    // We can fetch projects just to get the count for the stats
-    (async () => {
-      try {
-        const data = await apiRequest('GET', '/projects');
-        setProjectCount(data.projects?.length || 0);
-      } catch (err) {}
-    })();
-  }, []);
+    const timer = setTimeout(() => { void loadWorkspace(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadWorkspace]);
+
+  const recentDeployments = useMemo(() => projects
+    .flatMap((project) => project.latestDeployment ? [{ project, deployment: project.latestDeployment }] : [])
+    .sort((a, b) => new Date(b.deployment.deployedAt).getTime() - new Date(a.deployment.deployedAt).getTime())
+    .slice(0, 5), [projects]);
+
+  const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="flex flex-1 flex-col h-full w-full bg-[#000] text-[#EDEDED] p-8 md:p-12">
-      <div className="max-w-5xl mx-auto w-full h-full flex flex-col pt-10">
-        
-        {/* Hero Section */}
-        <div className="flex flex-col mb-12">
-          <div className="flex items-center gap-2 mb-2 text-[#888]">
-            <Cloud className="w-4 h-4" />
-            <span className="text-sm font-medium tracking-wider uppercase">Overview</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-white mb-4">
-            Acme Inc. Workspace
-          </h1>
-          <p className="text-lg text-[#888] max-w-2xl font-light">
-            Welcome back. Select a project from the sidebar to view deployments, configure settings, and monitor logs, or deploy something new.
-          </p>
+    <div className="app-page flex min-h-full flex-col gap-8">
+      <header className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-heading">Overview</h1>
+          <p className="page-subtitle">Your projects and the latest production activity.</p>
         </div>
+        <Button render={<Link href="/new" />}>
+          <Plus data-icon="inline-start" />
+          New project
+        </Button>
+      </header>
 
-        {/* Quick Actions / Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-          
-          <div className="flex flex-col p-6 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] hover:border-[#333] transition-colors relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-opacity opacity-0 group-hover:opacity-100" />
-            <div className="w-10 h-10 rounded-lg bg-[#111] border border-[#222] flex items-center justify-center mb-4">
-              <Box className="w-5 h-5 text-blue-400" />
-            </div>
-            <h3 className="text-2xl font-semibold text-white mb-1">{projectCount}</h3>
-            <span className="text-sm text-[#888]">Active Projects</span>
+      {loading ? <DashboardLoading /> : projects.length === 0 ? <WorkspaceEmpty /> : <>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card className="lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-sm font-medium">Projects</CardTitle>
+                <CardDescription>Current production state for each project.</CardDescription>
+              </div>
+              <div className="flex items-center gap-3">
+                <Input 
+                  placeholder="Search projects..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 w-[200px]"
+                />
+                <Button variant="ghost" size="sm" render={<Link href="/new" />}>Add project<Plus data-icon="inline-end" /></Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 h-[312px] overflow-y-auto relative">
+              <div className="divide-y divide-border">
+                {filteredProjects.map((project) => <ProjectRow key={project.id} project={project} />)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-4 lg:col-span-4">
+            <Card>
+              <CardHeader className="border-b border-border">
+                <CardTitle className="text-sm font-medium">Quick actions</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 p-4">
+                <Button variant="ghost" className="justify-start" render={<Link href="/new" />}><Plus data-icon="inline-start" />Import repository</Button>
+                <Button variant="ghost" className="justify-start" render={<Link href="/dashboard/deployments" />}><Rocket data-icon="inline-start" />Review deployments</Button>
+                <Button variant="ghost" className="justify-start" render={<Link href="/settings" />}><Settings2 data-icon="inline-start" />Workspace settings</Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="border-b border-border">
+                <CardTitle className="text-sm font-medium">Build configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 p-4 text-sm">
+                <MetaRow label="Projects" value={String(projects.length)} />
+                <MetaRow label="Frameworks" value={[...new Set(projects.map((project) => project.preset || "Other"))].join(", ")} />
+                <MetaRow label="Production branch" value={[...new Set(projects.map((project) => project.branch || "main"))].join(", ")} />
+              </CardContent>
+            </Card>
           </div>
+        </section>
 
-          <div className="flex flex-col p-6 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] hover:border-[#333] transition-colors relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-opacity opacity-0 group-hover:opacity-100" />
-            <div className="w-10 h-10 rounded-lg bg-[#111] border border-[#222] flex items-center justify-center mb-4">
-              <Activity className="w-5 h-5 text-green-400" />
-            </div>
-            <h3 className="text-2xl font-semibold text-white mb-1">99.9%</h3>
-            <span className="text-sm text-[#888]">Platform Uptime</span>
-          </div>
-
-          <div className="flex flex-col p-6 rounded-xl border border-[#1E1E1E] bg-[#0A0A0A] hover:border-[#333] transition-colors relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-opacity opacity-0 group-hover:opacity-100" />
-            <div className="w-10 h-10 rounded-lg bg-[#111] border border-[#222] flex items-center justify-center mb-4">
-              <Zap className="w-5 h-5 text-purple-400" />
-            </div>
-            <h3 className="text-2xl font-semibold text-white mb-1">0.4s</h3>
-            <span className="text-sm text-[#888]">Avg. Build Time</span>
-          </div>
-
-        </div>
-
-        {/* CTA Card */}
-        <div className="mt-auto md:mt-0 p-8 rounded-xl border border-[#1E1E1E] bg-gradient-to-b from-[#0A0A0A] to-[#000] flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative">
-          <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
-          
-          <div className="flex flex-col z-10">
-            <h2 className="text-xl font-medium text-white mb-2">Deploy a new project</h2>
-            <p className="text-sm text-[#888] max-w-md">
-              Connect a GitHub repository or start from a template to get your next app online in seconds.
-            </p>
-          </div>
-          
-          <Link href="/new" className="z-10 shrink-0">
-            <button className="flex items-center gap-2 bg-white text-black hover:bg-gray-200 h-10 px-5 rounded-md text-sm font-medium transition-colors">
-              <Plus className="w-4 h-4" />
-              Create Project
-            </button>
-          </Link>
-        </div>
-
-      </div>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card className="lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-sm font-medium">Recent deployments</CardTitle>
+                <CardDescription>Most recent deployment for each project.</CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" render={<Link href="/dashboard/deployments" />}>View all<ArrowUpRight data-icon="inline-end" /></Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {recentDeployments.length ? <div className="divide-y divide-border">{recentDeployments.slice(0, 2).map(({ project, deployment }) => <DeploymentRow key={deployment.id} project={project} deployment={deployment} />)}</div> : <div className="px-6 py-10 text-center"><p className="text-sm font-medium">No deployments yet</p><p className="mt-1 text-sm text-muted-foreground">Deploy a repository to see build activity here.</p></div>}
+            </CardContent>
+          </Card>
+          <Card className="lg:col-span-4">
+            <CardHeader className="border-b border-border">
+              <CardTitle className="text-sm font-medium">Environment preview</CardTitle>
+              <CardDescription>Production settings from your projects.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 p-4 text-sm">
+              {projects.slice(0, 3).map((project) => <div key={project.id} className="flex items-center justify-between gap-2"><span className="truncate text-muted-foreground">{project.name}</span><Badge variant="outline" className="shrink-0 font-mono text-[10px]">{project.outputDirectory || "dist"}</Badge></div>)}
+            </CardContent>
+          </Card>
+        </section>
+      </>}
     </div>
   );
+}
+
+function ProjectRow({ project }: { project: ProjectWithDeployment }) {
+  const deployment = project.latestDeployment;
+  return <Link href={`/projects/${project.id}`} className="grid gap-4 px-6 py-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <div className="flex items-center gap-4 min-w-0">
+      <ProjectAvatar projectId={project.id} size={40} className="rounded-md shadow-sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2"><p className="truncate text-base font-medium">{project.name}</p><Badge variant="outline" className="font-normal">{project.preset || "Other"}</Badge></div>
+        <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3 text-orange-400" />{project.branch || "main"}</span><span className="truncate">{project.subdomain}.localhost</span></div>
+      </div>
+    </div>
+    <div className="flex items-center gap-4 sm:justify-end"><StatusBadge status={deployment?.status} /><ChevronRight className="size-4 text-muted-foreground" /></div>
+  </Link>;
+}
+
+function DeploymentRow({ project, deployment }: { project: Project; deployment: Deployment }) {
+  return <Link href={`/projects/${project.id}`} className="grid gap-2 px-6 py-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6">
+    <div className="min-w-0"><p className="truncate text-sm font-medium">{deployment.commitMessage || `Deployment ${deployment.commitSha.slice(0, 7)}`}</p><p className="mt-1 text-xs text-muted-foreground">{project.name} · {relativeTime(deployment.deployedAt)}</p></div>
+    <span className="hidden items-center gap-2 font-mono text-xs text-muted-foreground sm:flex"><GitCommitHorizontal className="size-3 text-cyan-400" />{deployment.commitSha.slice(0, 7)}</span>
+    <StatusBadge status={deployment.status} />
+  </Link>;
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return <div className="flex items-start justify-between gap-4"><span className="text-muted-foreground">{label}</span><span className="max-w-[60%] text-right text-xs text-zinc-300">{value}</span></div>;
+}
+
+function StatusBadge({ status }: { status?: DeploymentStatus }) {
+  const labels: Record<DeploymentStatus, string> = { SUCCESS: "Ready", FAILED: "Failed", BUILDING: "Building", UPLOADING: "Uploading", QUEUED: "Queued", TIMEOUT: "Timed out", CANCELED: "Canceled" };
+  const dotColor = status === "SUCCESS" ? "bg-emerald-500" : status === "FAILED" ? "bg-red-500" : status === "BUILDING" || status === "UPLOADING" ? "bg-amber-400 animate-pulse" : status === "TIMEOUT" || status === "CANCELED" ? "bg-zinc-500" : "bg-zinc-400";
+  const textColor = status === "SUCCESS" ? "text-emerald-400" : status === "FAILED" ? "text-red-400" : status === "BUILDING" || status === "UPLOADING" ? "text-amber-300" : "text-zinc-300";
+  const borderColor = status === "SUCCESS" ? "border-emerald-500/30" : status === "FAILED" ? "border-red-500/30" : status === "BUILDING" || status === "UPLOADING" ? "border-amber-500/30" : "border-zinc-700";
+  return <Badge variant="outline" className={`gap-2 bg-zinc-900 font-normal ${textColor} ${borderColor}`}><span className={`size-1.5 rounded-full ${dotColor}`} />{status ? labels[status] : "Not deployed"}</Badge>;
+}
+
+function WorkspaceEmpty() {
+  return <Card><CardContent className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><span className="flex size-10 items-center justify-center rounded border border-border bg-muted"><Box className="size-4 text-muted-foreground" /></span><p className="mt-4 text-sm font-medium">Start with a repository</p><p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Import a Git repository, configure its build, and deploy it to production.</p><Button className="mt-6" render={<Link href="/new" />}><Plus data-icon="inline-start" />New project</Button></CardContent></Card>;
+}
+
+function DashboardLoading() {
+  return <div className="grid grid-cols-1 gap-4 lg:grid-cols-12"><div className="h-72 rounded-lg border border-border bg-card lg:col-span-8" /><div className="h-72 rounded-lg border border-border bg-card lg:col-span-4" /></div>;
+}
+
+function relativeTime(date: string) {
+  const minutes = Math.max(1, Math.floor((Date.now() - new Date(date).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

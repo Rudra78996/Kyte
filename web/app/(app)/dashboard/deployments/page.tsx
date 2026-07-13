@@ -1,251 +1,149 @@
 "use client";
 
-import React from "react";
-import { 
-  ChevronDown, 
-  Calendar, 
-  Search, 
-  ArrowUpCircle,
-  GitCommitHorizontal,
-  GitBranch,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Calendar, ExternalLink, FileText, GitBranch, GitCommitHorizontal, RefreshCw, Search } from "lucide-react";
+import { useApiRequest } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-const DUMMY_DEPLOYMENTS = [
-  {
-    id: 1,
-    message: "Add new images and updat...",
-    status: "Ready",
-    duration: "48s",
-    environment: "Production",
-    repo: "portfolio",
-    repoIcon: "R",
-    commitSha: "7tGrARCbh",
-    isRedeploy: true,
-    branch: "main",
-    date: "Jul 2",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Sophia",
-  },
-  {
-    id: 2,
-    message: "Add new images and updat...",
-    status: "Ready",
-    duration: "31s",
-    environment: "Production",
-    repo: "portfolio",
-    repoIcon: "R",
-    commitSha: "b55554d",
-    isRedeploy: false,
-    branch: "main",
-    date: "Jul 2",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Sophia",
-  },
-  {
-    id: 3,
-    message: "feat: implement custom sou...",
-    status: "Ready",
-    duration: "43s",
-    environment: "Production",
-    repo: "portfolio",
-    repoIcon: "R",
-    commitSha: "df89a0c",
-    isRedeploy: false,
-    branch: "main",
-    date: "Jul 2",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Sophia",
-  },
-  {
-    id: 4,
-    message: "fix: update login credentials...",
-    status: "Ready",
-    duration: "33s",
-    environment: "Production",
-    repo: "tdc-matchmaker-algo-...",
-    repoIcon: "▲",
-    commitSha: "1db72d8",
-    isRedeploy: false,
-    branch: "main",
-    date: "Jun 5",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Sophia",
-  },
-  {
-    id: 5,
-    message: "Update documentation link...",
-    status: "Error",
-    duration: "57s",
-    environment: "Production",
-    repo: "mcp-x-86f9",
-    repoIcon: "N",
-    commitSha: "9d8f1fc",
-    isRedeploy: false,
-    branch: "main",
-    date: "May 22",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Alex",
-  },
-  {
-    id: 6,
-    message: "Update documentation link...",
-    status: "Error",
-    duration: "50s",
-    environment: "Production",
-    repo: "mcp-x",
-    repoIcon: "N",
-    commitSha: "9d8f1fc",
-    isRedeploy: false,
-    branch: "main",
-    date: "May 22",
-    author: "https://api.dicebear.com/9.x/notionists/svg?seed=Alex",
-  },
-];
+type Status = "QUEUED" | "BUILDING" | "UPLOADING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "CANCELED";
+type Project = { id: string; name: string; subdomain: string; repoUrl: string; preset?: string | null };
+type Deployment = { id: string; projectId: string; status: Status; commitSha: string; commitMessage?: string | null; branch: string; triggerSource?: "MANUAL" | "WEBHOOK"; deployedAt: string; updatedAt: string };
+type DeploymentRow = Deployment & { project: Project };
 
 export default function DeploymentsPage() {
-  return (
-    <div className="flex flex-col w-full h-full text-sm">
-      
-      {/* Top Header matching the screenshot */}
-      <div className="flex items-center justify-between mb-6">
-        <Button variant="ghost" className="hover:bg-transparent font-medium px-0">
-          <div className="w-4 h-4 border rounded-sm mr-2 flex items-center justify-center bg-muted/50" />
-          All Projects
-          <ChevronDown className="ml-1 size-4 text-muted-foreground" />
-        </Button>
-        <div className="font-medium text-sm">
-          Deployments
-        </div>
-        <div className="w-[100px]"></div> {/* Spacer for centering */}
-      </div>
+  const apiRequest = useApiRequest();
+  const [rows, setRows] = useState<DeploymentRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "in-progress" | Status>("all");
+  const [loading, setLoading] = useState(true);
+  const [deployingId, setDeployingId] = useState<string | null>(null);
 
-      {/* Filters Bar */}
-      <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-2 scrollbar-none">
-        <Button variant="outline" className="justify-start text-muted-foreground font-normal min-w-[200px] border-neutral-800 bg-black">
-          <Calendar className="mr-2 size-4" />
-          Select Date Range
-        </Button>
-        
-        <Select defaultValue="all-authors">
-          <SelectTrigger className="w-[140px] border-neutral-800 bg-black">
-            <Search className="mr-2 size-3 text-muted-foreground" />
-            <SelectValue placeholder="All Authors" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-authors">All Authors</SelectItem>
-          </SelectContent>
-        </Select>
+  const loadDeployments = useCallback(async () => {
+    await Promise.resolve();
+    setLoading(true);
+    try {
+      const projectData = await apiRequest("GET", "/projects") as { projects?: Project[] };
+      const projects = projectData.projects || [];
+      const groups = await Promise.all(projects.map(async (project) => {
+        try {
+          const result = await apiRequest("GET", `/projects/${project.id}/deployments`) as { deployments?: Deployment[] };
+          return (result.deployments || []).map((deployment) => ({ ...deployment, project }));
+        } catch {
+          return [] as DeploymentRow[];
+        }
+      }));
+      setRows(groups.flat().sort((a, b) => new Date(b.deployedAt).getTime() - new Date(a.deployedAt).getTime()));
+    } finally {
+      setLoading(false);
+    }
+  }, [apiRequest]);
 
-        <Select defaultValue="all-environments">
-          <SelectTrigger className="w-[160px] border-neutral-800 bg-black">
-            <SelectValue placeholder="All Environments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-environments">All Environments</SelectItem>
-          </SelectContent>
-        </Select>
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadDeployments(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadDeployments]);
 
-        <Select defaultValue="all-repos">
-          <SelectTrigger className="w-[150px] border-neutral-800 bg-black">
-            <Search className="mr-2 size-3 text-muted-foreground" />
-            <SelectValue placeholder="All Repositories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-repos">All Repositories</SelectItem>
-          </SelectContent>
-        </Select>
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    const searchable = `${row.project.name} ${row.commitSha} ${row.commitMessage || ""} ${row.branch}`.toLowerCase();
+    return searchable.includes(query.toLowerCase()) && (status === "all" || (status === "in-progress" ? ["QUEUED", "BUILDING", "UPLOADING"].includes(row.status) : row.status === status));
+  }), [query, rows, status]);
 
-        <Select defaultValue="all-branches">
-          <SelectTrigger className="w-[140px] border-neutral-800 bg-black">
-            <Search className="mr-2 size-3 text-muted-foreground" />
-            <SelectValue placeholder="All Branches" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-branches">All Branches</SelectItem>
-          </SelectContent>
-        </Select>
+  const [page, setPage] = useState(1);
+  const perPage = 6;
+  const totalPages = Math.ceil(filteredRows.length / perPage);
+  
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [query, status]);
 
-        <Button variant="outline" className="border-neutral-800 bg-black">
-          <div className="flex gap-1 mr-2">
-            <span className="size-2 rounded-full bg-emerald-500"></span>
-            <span className="size-2 rounded-full bg-red-500"></span>
-            <span className="size-2 rounded-full bg-blue-500"></span>
-          </div>
-          Status <span className="ml-1 text-muted-foreground">6/7</span>
-          <ChevronDown className="ml-2 size-4 text-muted-foreground" />
-        </Button>
-      </div>
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * perPage;
+    return filteredRows.slice(start, start + perPage);
+  }, [filteredRows, page, perPage]);
 
-      {/* Deployments List */}
-      <div className="flex flex-col border border-neutral-800 rounded-lg overflow-hidden bg-black/50">
-        {DUMMY_DEPLOYMENTS.map((deploy, i) => (
-          <div 
-            key={i} 
-            className={`flex items-center p-4 hover:bg-neutral-900/50 transition-colors cursor-pointer ${
-              i !== DUMMY_DEPLOYMENTS.length - 1 ? "border-b border-neutral-800" : ""
-            }`}
-          >
-            {/* Message & Status */}
-            <div className="flex items-center w-[35%] gap-4">
-              <span className="truncate font-medium text-[13px]">{deploy.message}</span>
-              <div className="flex items-center gap-1.5 ml-auto pr-4 shrink-0">
-                <span className={`size-2 rounded-full ${deploy.status === "Ready" ? "bg-emerald-500" : "bg-red-500"}`} />
-                <span className="text-muted-foreground text-[13px]">{deploy.status} <span className="opacity-70">{deploy.duration}</span></span>
+  const redeploy = async (row: DeploymentRow) => {
+    setDeployingId(row.id);
+    try {
+      await apiRequest("POST", `/projects/${row.projectId}/deployments`, { repoUrl: row.project.repoUrl, branch: row.branch, commitSha: row.commitSha, commitMessage: row.commitMessage || undefined, trigger: "manual" });
+      await loadDeployments();
+    } finally {
+      setDeployingId(null);
+    }
+  };
+
+  return <div className="app-page flex min-h-full flex-col gap-6">
+    <header className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div><h1 className="page-heading">Deployments</h1><p className="page-subtitle">Every deployment across this workspace.</p></div>
+    </header>
+
+    <section className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
+      <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-8" placeholder="Search deployments" /></div>
+      <div className="flex gap-1 overflow-x-auto"><FilterButton active={status === "all"} onClick={() => setStatus("all")}>All</FilterButton><FilterButton active={status === "SUCCESS"} onClick={() => setStatus("SUCCESS")}>Ready</FilterButton><FilterButton active={status === "in-progress"} onClick={() => setStatus("in-progress")}>In progress</FilterButton><FilterButton active={status === "FAILED"} onClick={() => setStatus("FAILED")}>Failed</FilterButton></div>
+    </section>
+
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="hidden grid-cols-[minmax(220px,1.8fr)_150px_145px_minmax(180px,1fr)_160px] gap-4 border-b border-border bg-zinc-900/50 px-6 py-2 text-[11px] font-medium text-zinc-400 md:grid"><span>Deployment</span><span>Status</span><span>Project</span><span>Source</span><span className="text-right">Created</span></div>
+      {loading ? <LoadingRows /> : filteredRows.length ? (
+        <>
+          {paginatedRows.map((row) => (
+            <DeploymentItem key={row.id} row={row} redeploy={redeploy} deploying={deployingId === row.id} />
+          ))}
+          {filteredRows.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+              <p className="text-sm text-muted-foreground">
+                Showing {((page - 1) * perPage) + 1} to {Math.min(page * perPage, filteredRows.length)} of {filteredRows.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
               </div>
             </div>
-
-            {/* Environment */}
-            <div className="flex items-center w-[15%]">
-              <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 font-normal py-0">
-                <ArrowUpCircle className="mr-1 size-3" />
-                {deploy.environment}
-              </Badge>
-            </div>
-
-            {/* Repo */}
-            <div className="flex items-center w-[20%] text-[13px] text-muted-foreground gap-2">
-              <span className="font-bold text-foreground bg-neutral-800 size-5 flex items-center justify-center rounded-sm text-[10px]">
-                {deploy.repoIcon}
-              </span>
-              <span className="truncate">{deploy.repo}</span>
-            </div>
-
-            {/* Commit & Branch */}
-            <div className="flex items-center w-[20%] text-[13px] text-muted-foreground gap-3">
-              {deploy.isRedeploy ? (
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="truncate text-foreground">Redeploy of {deploy.commitSha}</span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <GitCommitHorizontal className="size-3.5" />
-                    <span>{deploy.commitSha}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <GitBranch className="size-3.5" />
-                    <span>{deploy.branch}</span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Date & Avatar */}
-            <div className="flex items-center justify-end w-[10%] gap-3 text-[13px] text-muted-foreground shrink-0">
-              <span>{deploy.date}</span>
-              <Avatar className="size-6 border border-neutral-700">
-                <AvatarImage src={deploy.author} />
-                <AvatarFallback>U</AvatarFallback>
-              </Avatar>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+          )}
+        </>
+      ) : <EmptyDeployments query={query} />}
+    </section>
+  </div>;
 }
+
+function DeploymentItem({ row, redeploy, deploying }: { row: DeploymentRow; redeploy: (row: DeploymentRow) => Promise<void>; deploying: boolean }) {
+  const duration = formatDuration(row.deployedAt, row.updatedAt);
+  return <div className="group grid gap-4 border-b border-border px-6 py-4 last:border-0 md:grid-cols-[minmax(220px,1.8fr)_150px_145px_minmax(180px,1fr)_160px] md:items-center md:gap-4">
+    <div className="min-w-0"><Link href={`/projects/${row.projectId}`} className="block truncate text-sm font-medium hover:underline">{row.commitMessage || `Deployment ${row.commitSha.slice(0, 7)}`}</Link><div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span className="font-mono">{row.commitSha.slice(0, 7)}</span><span className="md:hidden">· {row.project.name}</span></div></div>
+    <DeploymentStatus status={row.status} duration={duration} />
+    <Link href={`/projects/${row.projectId}`} className="hidden items-center gap-2 text-sm text-zinc-300 hover:text-white md:flex"><span className="flex size-6 items-center justify-center rounded border border-indigo-500/30 bg-indigo-500/10 text-[10px] font-semibold text-indigo-400">{row.project.name.slice(0, 1).toUpperCase()}</span><span className="truncate">{row.project.name}</span></Link>
+    <div className="hidden items-center gap-4 text-xs text-muted-foreground md:flex"><span className="flex items-center gap-2"><GitCommitHorizontal className="size-3 text-cyan-400" />{row.commitSha.slice(0, 7)}</span><span className="flex items-center gap-2"><GitBranch className="size-3 text-orange-400" />{row.branch}</span><Badge variant="outline" className="font-normal">{row.triggerSource === "WEBHOOK" ? "Git push" : "Manual"}</Badge></div>
+    <div className="flex items-center justify-between gap-2 md:justify-end"><span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(row.deployedAt)}</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-xs" title="View project" render={<Link href={`/projects/${row.projectId}`} />}><FileText /></Button><Button variant="ghost" size="icon-xs" title="Redeploy" disabled={deploying} onClick={() => void redeploy(row)}>{deploying ? <RefreshCw className="animate-spin" /> : <RefreshCw />}</Button>{row.status === "SUCCESS" && <Button variant="ghost" size="icon-xs" title="Visit deployment" render={<a href={`http://${row.project.subdomain}.localhost`} target="_blank" rel="noreferrer" />}><ExternalLink /></Button>}</div></div>
+  </div>;
+}
+
+function DeploymentStatus({ status, duration }: { status: Status; duration: string }) {
+  const label: Record<Status, string> = { SUCCESS: "Ready", FAILED: "Failed", BUILDING: "Building", UPLOADING: "Uploading", QUEUED: "Queued", TIMEOUT: "Timed out", CANCELED: "Canceled" };
+  const dotColor = status === "SUCCESS" ? "bg-emerald-500" : status === "FAILED" ? "bg-red-500" : status === "BUILDING" || status === "UPLOADING" ? "bg-amber-400 animate-pulse" : "bg-zinc-400";
+  const textColor = status === "SUCCESS" ? "text-emerald-400" : status === "FAILED" ? "text-red-400" : status === "BUILDING" || status === "UPLOADING" ? "text-amber-300" : "text-zinc-300";
+  const borderColor = status === "SUCCESS" ? "border-emerald-500/30" : status === "FAILED" ? "border-red-500/30" : status === "BUILDING" || status === "UPLOADING" ? "border-amber-500/30" : "border-zinc-700";
+  return <div><Badge variant="outline" className={`gap-2 bg-zinc-900 font-normal ${textColor} ${borderColor}`}><span className={`size-1.5 rounded-full ${dotColor}`} />{label[status]}<span className="text-zinc-500">{duration}</span></Badge></div>;
+}
+
+function FilterButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <Button variant={active ? "secondary" : "ghost"} size="sm" onClick={onClick}>{children}</Button>; }
+function LoadingRows() { return <div className="divide-y divide-border">{Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-[73px] animate-pulse bg-card" />)}</div>; }
+function EmptyDeployments({ query }: { query: string }) { return <div className="px-6 py-16 text-center"><p className="text-sm font-medium">{query ? "No matching deployments" : "No deployments yet"}</p><p className="mt-1 text-sm text-muted-foreground">{query ? "Try a different project, branch, or commit." : "Deploy a project to start building your timeline."}</p></div>; }
+function formatDate(value: string) { const d = new Date(value); const now = new Date(); const diffMs = now.getTime() - d.getTime(); const diffMin = Math.floor(diffMs / 60000); if (diffMin < 1) return 'Just now'; if (diffMin < 60) return `${diffMin}m ago`; const diffHr = Math.floor(diffMin / 60); if (diffHr < 24) return `${diffHr}h ago`; const diffDays = Math.floor(diffHr / 24); if (diffDays < 7) return `${diffDays}d ago`; return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+function formatDuration(start: string, end: string) { const seconds = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000)); return seconds ? `${seconds}s` : "—"; }

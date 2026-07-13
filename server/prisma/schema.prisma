@@ -9,17 +9,41 @@ datasource db {
 }
 
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  passwordHash      String?
-  clerkId           String?            @unique
-  githubId          String?            @unique
-  username          String?
-  avatarUrl         String?
-  projects          Project[]
-  githubConnections GitHubConnection[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  passwordHash       String?
+  clerkId            String?              @unique
+  githubId           String?              @unique
+  username           String?
+  avatarUrl          String?
+  projects           Project[]
+  githubConnections  GitHubConnection[]
+  organizationMembers OrganizationMember[]
+  notifications      Notification[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+}
+
+model Organization {
+  id        String               @id @default(cuid())
+  name      String
+  slug      String               @unique
+  members   OrganizationMember[]
+  projects  Project[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String       @default("MEMBER") // OWNER, ADMIN, MEMBER
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
 }
 
 model Project {
@@ -30,9 +54,12 @@ model Project {
   subdomain        String             @unique
   userId           String
   user             User               @relation(fields: [userId], references: [id])
+  organizationId   String?
+  organization     Organization?      @relation(fields: [organizationId], references: [id])
   activeDeployId   String?            @unique
   activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
   deployments      Deployment[]       @relation("ProjectDeployments")
+  requestLogs      RequestLog[]       @relation("ProjectRequestLogs")
   githubConnection GitHubConnection?
   webhookId        String?
   preset           String?            @default("React")
@@ -74,6 +101,17 @@ model DeploymentLogChunk {
   @@unique([deploymentId, sequence, stream])
 }
 
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // SUCCESS, ERROR, INFO
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
 model GitHubConnection {
   id                   String    @id @default(cuid())
   userId               String
@@ -108,3 +146,21 @@ enum LogStream {
   STDERR
 }
 
+model RequestLog {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation("ProjectRequestLogs", fields: [projectId], references: [id], onDelete: Cascade)
+  
+  timestamp    DateTime @default(now())
+  
+  method       String   
+  path         String   
+  statusCode   Int      
+  responseTime Int      // in milliseconds
+  
+  ipAddress    String?
+  country      String?  
+  countryCode  String?  
+
+  @@index([projectId, timestamp])
+}

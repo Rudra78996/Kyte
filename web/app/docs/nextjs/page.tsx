@@ -31,9 +31,9 @@ export default function NextjsDocs() {
               Next.js must be told to output static files rather than relying on a Node.js server.
             </p>
             <div className="bg-neutral-900 p-4 rounded-md border border-neutral-800 font-mono text-[13px] leading-relaxed">
-              <span className="text-neutral-500">// next.config.js</span><br/>
+              <span className="text-neutral-500">{"// next.config.js"}</span><br/>
               <span className="text-neutral-300">const</span> nextConfig = {'{'}<br/>
-              &nbsp;&nbsp;<span className="text-neutral-300">output</span>: <span className="text-neutral-400">'export'</span>,<br/>
+              &nbsp;&nbsp;<span className="text-neutral-300">output</span>: <span className="text-neutral-400">&apos;export&apos;</span>,<br/>
               {'}'};<br/>
               <br/>
               <span className="text-neutral-300">export default</span> nextConfig;
@@ -62,7 +62,7 @@ export default function NextjsDocs() {
               <div className="bg-neutral-900 px-3 py-2.5 rounded border border-neutral-800 font-mono text-[13px] text-neutral-300">
                 out
               </div>
-              <span className="text-xs text-neutral-500 mt-1">Next.js places static exports in 'out', not '.next'.</span>
+              <span className="text-xs text-neutral-500 mt-1">Next.js places static exports in &apos;out&apos;, not &apos;.next&apos;.</span>
             </div>
           </CardContent>
         </Card>

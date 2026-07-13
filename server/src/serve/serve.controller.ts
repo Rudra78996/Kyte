@@ -7,15 +7,14 @@ export class ServeController {
   constructor(private readonly serveService: ServeService) {}
 
   @Get(':slug')
-  async serveRoot(@Param('slug') slug: string, @Res() res: Response) {
-    return this.serveService.serveFile(slug, '', res);
+  async serveRoot(@Param('slug') slug: string, @Req() req: Request, @Res() res: Response) {
+    return this.serveService.serveFile(slug, '', res, req);
   }
 
   @Get(':slug/*')
   async servePath(@Param('slug') slug: string, @Req() req: Request, @Res() res: Response) {
-    // extract path after /serve/:slug/
     const prefix = `/serve/${slug}/`;
     const path = req.path.replace(prefix, '');
-    return this.serveService.serveFile(slug, path, res);
+    return this.serveService.serveFile(slug, path, res, req);
   }
 }

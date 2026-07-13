@@ -1,11 +1,59 @@
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useApiRequest, useApiToken } from '@/hooks/use-api';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Terminal, GitBranch, Settings, Activity, Clock, Zap, ChevronRight, Circle, Globe, Box, Copy, MoreVertical, Search, ChevronDown, Rocket, RefreshCw, XCircle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX } from 'lucide-react';
+import Link from 'next/link';
+import { ProjectAvatar } from '@/components/project-avatar';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
+
+
+interface Project {
+  id: string;
+  name: string;
+  repoUrl: string;
+  preset: string;
+  rootDirectory: string;
+  buildCommand: string;
+  outputDirectory: string;
+  branch: string;
+  subdomain?: string;
+  webhookId?: string;
+}
+
+interface Deployment {
+  id: string;
+  status: string;
+  commitSha: string;
+  deployedAt: string;
+  branch?: string;
+  triggerSource?: string;
+  commitMessage?: string;
+  updatedAt: string;
+}
+
+interface SettingsForm {
+  name: string;
+  branch: string;
+  rootDirectory: string;
+  buildCommand: string;
+  outputDirectory: string;
+}
 
 export default function ProjectPage() {
   const params = useParams();
@@ -14,37 +62,41 @@ export default function ProjectPage() {
   const apiRequest = useApiRequest();
   const getClerkToken = useApiToken();
 
-  const [project, setProject] = useState<any>(null);
-  const [deployments, setDeployments] = useState<any[]>([]);
-  const [activeDeploy, setActiveDeploy] = useState<any>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [activeDeploy, setActiveDeploy] = useState<Deployment | null>(null);
+  const [metrics, setMetrics] = useState<any>(null);
   const [logs, setLogs] = useState<{ stream: string; text: string }[]>([]);
+  const [logQuery, setLogQuery] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<string>("Deployments");
+  const [activeTab, setActiveTab] = useState<string>("Overview");
 
-  const [settingsForm, setSettingsForm] = useState<any>({
+  const [settingsForm, setSettingsForm] = useState<SettingsForm>({
     name: '', branch: '', rootDirectory: '', buildCommand: '', outputDirectory: ''
   });
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [projectId]);
+  const copyLogs = async () => {
+    await navigator.clipboard.writeText(logs.map((log) => log.text).join(''));
+  };
 
-  useEffect(() => {
-    if (activeTab === "Logs") {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs, activeTab]);
+  const downloadLogs = () => {
+    const blob = new Blob([logs.map((log) => log.text).join('')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${project?.name || 'deployment'}-${activeDeploy?.commitSha?.slice(0, 7) || 'logs'}.log`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const proj = await apiRequest('GET', `/projects`);
-      const found = proj.projects.find((p: any) => p.id === projectId);
+      const found = proj.projects.find((p: Project) => p.id === projectId);
       setProject(found);
-      
-      setSettingsForm((prev: any) => ({
+
+      setSettingsForm((prev: SettingsForm) => ({
         name: prev.name || found.name || '',
         branch: prev.branch || found.branch || '',
         rootDirectory: prev.rootDirectory || found.rootDirectory || '',
@@ -55,21 +107,42 @@ export default function ProjectPage() {
       const deps = await apiRequest('GET', `/projects/${projectId}/deployments`);
       setDeployments(deps.deployments || []);
       if (deps.deployments.length > 0) {
-        setActiveDeploy((prev: any) => prev ? prev : deps.deployments[0]);
+        setActiveDeploy((prev: Deployment | null) => prev ? prev : deps.deployments[0]);
       }
+
+      const metricsData = await apiRequest('GET', `/projects/${projectId}/metrics`).catch(() => null);
+      if (metricsData) setMetrics(metricsData);
     } catch (err) { console.error(err); }
-  };
+  }, [apiRequest, projectId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadData(); }, 0);
+    const interval = setInterval(() => { void loadData(); }, 5000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === "Logs") {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, activeTab]);
 
   const triggerDeploy = async () => {
     try {
+      if (!project) return;
       const res = await apiRequest('POST', `/projects/${projectId}/deployments`, {
         repoUrl: project.repoUrl, branch: project.branch || 'main', commitSha: 'HEAD',
       });
       setActiveDeploy(res);
       setLogs([]);
       setActiveTab("Logs");
-      loadData();
-    } catch (err: any) { alert(err.message); }
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to trigger deployment');
+    }
   };
 
   const [enablingWebhook, setEnablingWebhook] = useState(false);
@@ -78,8 +151,10 @@ export default function ProjectPage() {
     try {
       const res = await apiRequest('POST', `/projects/${projectId}/webhook/enable`);
       alert(res.message || 'Webhook enabled!');
-      loadData();
-    } catch (err: any) { alert(err.message || 'Failed'); }
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to enable webhook');
+    }
     finally { setEnablingWebhook(false); }
   };
 
@@ -88,26 +163,27 @@ export default function ProjectPage() {
     try {
       await apiRequest('PATCH', `/projects/${projectId}`, settingsForm);
       alert('Settings saved successfully!');
-      loadData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to save settings');
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+
   const deleteProject = async () => {
-    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) return;
     try {
       await apiRequest('DELETE', `/projects/${projectId}`);
       router.push('/dashboard');
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete project');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete project');
     }
   };
 
   useEffect(() => {
-    if (!activeDeploy) return;
+    if (!activeDeploy?.id) return;
     let es: EventSource;
     (async () => {
       const token = await getClerkToken();
@@ -118,471 +194,471 @@ export default function ProjectPage() {
         try {
           const data = JSON.parse(event.data);
           setLogs(prev => [...prev, data]);
-          if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) loadData();
-        } catch (e) {}
+          if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) {
+            void loadData();
+          }
+        } catch {}
       };
     })();
     return () => es?.close();
-  }, [activeDeploy?.id]);
+  }, [activeDeploy?.id, getClerkToken, loadData, projectId]);
 
-  if (!project) return <div className="min-h-screen bg-[#000] text-gray-100 py-24 text-center animate-pulse">Loading…</div>;
+  if (!project) return <div className="app-page py-24 text-center text-muted-foreground animate-pulse">Loading project…</div>;
 
-  const tabs = ["Deployments", "Analytics", "Logs", "Environment", "Domains", "Settings"];
+  const tabs = ["Overview", "Observability", "Deployments", "Logs", "Domains", "Settings"];
 
   const renderStatusBadge = (status: string) => {
-    if (status === 'SUCCESS') {
-      return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#111] border border-[#222] text-[#00E599] text-xs font-medium">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#00E599]" />
-          Ready
-        </div>
-      );
-    }
-    if (status === 'FAILED') {
-      return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#111] border border-[#222] text-[#FF5555] text-xs font-medium">
-          <XCircle className="w-3 h-3 text-[#FF5555]" />
-          Error
-        </div>
-      );
-    }
-    if (status === 'BUILDING') {
-      return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#111] border border-[#222] text-[#F5A623] text-xs font-medium animate-pulse">
-          <Circle className="w-1.5 h-1.5 rounded-full bg-[#F5A623]" fill="currentColor" />
-          Building
-        </div>
-      );
-    }
-    return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#111] border border-[#222] text-gray-400 text-xs font-medium">
-        <Circle className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-        Queued
-      </div>
-    );
+    const label = status === 'SUCCESS' ? 'Ready' : status === 'FAILED' ? 'Failed' : status === 'BUILDING' ? 'Building' : status === 'UPLOADING' ? 'Uploading' : 'Queued';
+    const dotColor = status === 'SUCCESS' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-red-500' : status === 'BUILDING' || status === 'UPLOADING' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-400';
+    const textColor = status === 'SUCCESS' ? 'text-emerald-400' : status === 'FAILED' ? 'text-red-400' : status === 'BUILDING' || status === 'UPLOADING' ? 'text-amber-300' : 'text-zinc-300';
+    const borderColor = status === 'SUCCESS' ? 'border-emerald-500/30' : status === 'FAILED' ? 'border-red-500/30' : status === 'BUILDING' || status === 'UPLOADING' ? 'border-amber-500/30' : 'border-zinc-700';
+    return <Badge variant="outline" className={`gap-2 bg-zinc-900 font-normal ${textColor} ${borderColor}`}><span className={`size-1.5 rounded-full ${dotColor}`} />{label}</Badge>;
   };
 
   const currentDeployStatus = activeDeploy?.status || 'UNKNOWN';
-  const isLatestDeployReady = deployments.length > 0 && deployments[0].status === 'SUCCESS';
-
   return (
-    <div className="min-h-screen bg-[#000] text-gray-100 font-sans selection:bg-[#fff] selection:text-[#000] pb-24">
+    <div className="min-h-full w-full bg-background text-foreground">
       {/* Top Navbar */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-[#1E1E1E]">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <div className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer" onClick={() => router.push('/dashboard')}>
-            <span className="font-semibold text-gray-300">Kyte</span>
-          </div>
+      <div className="flex h-14 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-md sm:px-6 md:px-8">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <SidebarTrigger className="-ml-1 mr-1" />
+          <span className="h-4 w-px bg-border" />
+          <Link href="/dashboard" className="flex items-center gap-2 hover:text-foreground transition-colors cursor-pointer">
+            <span className="font-medium text-foreground">Projects</span>
+          </Link>
           <ChevronRight className="w-4 h-4" />
-          <div className="flex items-center gap-2 font-medium text-gray-100">
+          <div className="flex items-center gap-2 font-medium text-foreground">
             {project.name}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={triggerDeploy} variant="outline" className="h-8 px-3 text-xs bg-transparent border-[#333] hover:bg-[#111] hover:text-white text-gray-300 transition-colors">
-            <RefreshCw className="w-3.5 h-3.5 mr-2" /> Redeploy
+        <div className="flex items-center gap-2">
+          <Button onClick={triggerDeploy} variant="outline" size="sm">
+            <RefreshCw data-icon="inline-start" /> Redeploy
           </Button>
           <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
-            <Button className="h-8 px-3 text-xs bg-white text-black hover:bg-gray-200 transition-colors">
-              <ExternalLink className="w-3.5 h-3.5 mr-2" /> Visit
+            <Button size="sm">
+              <ExternalLink data-icon="inline-start" /> Visit
             </Button>
           </a>
         </div>
       </div>
 
-      <div className="px-8 mt-12 max-w-[1600px] mx-auto w-full">
-        {/* Hero Header */}
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-8 mb-12 w-full">
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-2xl border border-[#333] bg-gradient-to-br from-[#111] to-[#050505] flex items-center justify-center shrink-0 shadow-2xl">
-              <Zap className="w-8 h-8 text-[#F5A623]" fill="currentColor" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold tracking-tight text-white">{project.name}</h1>
-                {isLatestDeployReady ? (
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#111] border border-[#222] text-[#00E599] text-[11px] font-semibold tracking-wide uppercase">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#00E599]" /> Ready
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#111] border border-[#222] text-[#F5A623] text-[11px] font-semibold tracking-wide uppercase">
-                    <Circle className="w-1.5 h-1.5 rounded-full bg-[#F5A623]" fill="currentColor" /> Building
-                  </div>
-                )}
-                <Badge variant="outline" className="px-2 py-0 text-[11px] font-mono border-[#333] text-gray-400 bg-transparent rounded-sm">Next.js</Badge>
-                <Badge variant="outline" className="px-2 py-0 text-[11px] font-mono border-[#333] text-gray-400 bg-transparent rounded-sm">React</Badge>
+      <div className="app-page flex min-h-0 flex-1 flex-col gap-7 pb-12 pt-7">
+        <section className="flex flex-col gap-5 border-b border-border pb-6">
+          <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="p-1 rounded-lg border border-border/60 shrink-0 bg-card shadow-sm">
+                  <ProjectAvatar projectId={project.id} size={48} className="rounded-md" />
+                </div>
+                <h1 className="text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">{project.name}</h1>
+                {renderStatusBadge(deployments[0]?.status || 'QUEUED')}
+                <Badge variant="outline" className="font-mono font-normal">{project.preset || 'Other'}</Badge>
               </div>
-              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400">
-                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white transition-colors">
-                  <Globe className="w-3.5 h-3.5" />
-                  {project.subdomain}.localhost <ExternalLink className="w-3 h-3" />
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                  <Globe className="size-3.5" />
+                  {project.subdomain}.localhost <ExternalLink className="size-3" />
                 </a>
-                <div className="flex items-center gap-1.5">
-                  <GitBranch className="w-3.5 h-3.5" /> {project.branch || 'main'}
+                <div className="flex items-center gap-2">
+                  <GitBranch className="size-3.5" /> {project.branch || 'main'}
                 </div>
                 {activeDeploy && (
-                  <div className="flex items-center gap-1.5 font-mono">
-                    {activeDeploy.commitSha?.slice(0, 7)}
+                  <div className="flex items-center gap-2 font-mono">
+                    <GitCommitHorizontal className="size-3.5" />{activeDeploy.commitSha?.slice(0, 7)}
                   </div>
                 )}
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" /> Last deployed {deployments.length > 0 ? 'recently' : 'never'}
+                <div className="flex items-center gap-2">
+                  <Clock className="size-3.5" /> {deployments.length > 0 ? `Deployed ${new Date(deployments[0].deployedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Not deployed'}
                 </div>
               </div>
-            </div>
           </div>
-
-          <div className="flex items-center gap-4 xl:justify-end">
-            <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-[#222] bg-[#0A0A0A] min-w-[110px]">
-              <span className="text-xl font-bold text-[#7B7BFF] tracking-tight">2.4M</span>
-              <span className="text-[11px] text-gray-500 font-medium">Requests</span>
-            </div>
-            <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-[#222] bg-[#0A0A0A] min-w-[110px]">
-              <span className="text-xl font-bold text-[#00E599] tracking-tight">99.98%</span>
-              <span className="text-[11px] text-gray-500 font-medium">Uptime</span>
-            </div>
-            <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-[#222] bg-[#0A0A0A] min-w-[110px]">
-              <span className="text-xl font-bold text-[#F5A623] tracking-tight">84ms</span>
-              <span className="text-[11px] text-gray-500 font-medium">Avg. resp.</span>
-            </div>
-          </div>
-        </div>
+        </section>
 
         {/* Tabs */}
-        <div className="flex items-center gap-8 border-b border-[#222] mb-8 overflow-x-auto hide-scrollbar w-full">
+        <div className="-mb-px flex w-full shrink-0 items-center gap-5 overflow-x-auto border-b border-border">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`pb-3 text-sm font-medium transition-colors relative whitespace-nowrap flex items-center gap-2 ${
-                activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+              className={`relative flex items-center gap-2 whitespace-nowrap pb-4 text-sm font-medium transition-colors ${
+                activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'Deployments' && <Zap className="w-4 h-4" />}
-              {tab === 'Analytics' && <Activity className="w-4 h-4" />}
-              {tab === 'Logs' && <Terminal className="w-4 h-4" />}
-              {tab === 'Environment' && <Box className="w-4 h-4" />}
-              {tab === 'Domains' && <Globe className="w-4 h-4" />}
-              {tab === 'Settings' && <Settings className="w-4 h-4" />}
               {tab}
               {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-t-full shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-primary" />
               )}
             </button>
           ))}
         </div>
 
-        {/* Tab Content */}
-        {activeTab === "Deployments" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full">
-            {/* Left: Deployment List */}
-            <div className="lg:col-span-8 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Deployment History</h2>
-                <Button variant="outline" className="h-8 px-3 text-xs bg-transparent border-[#333] text-gray-300 hover:bg-[#111]">
-                  All branches <ChevronDown className="w-3.5 h-3.5 ml-2" />
-                </Button>
+        {/* Tab Content Wrapper */}
+        <div className="mt-4 flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+          {activeTab === "Overview" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-8">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-sm font-medium">Latest deployment</h2><p className="mt-1 text-xs text-muted-foreground">Current production build and source.</p></div>{renderStatusBadge(currentDeployStatus)}</div>
+                <div className="grid gap-6 p-5 sm:grid-cols-2"><div><p className="section-label">Source commit</p><p className="mt-2 flex items-center gap-2 font-mono text-sm"><GitCommitHorizontal className="size-3.5 text-zinc-400" />{activeDeploy?.commitSha?.slice(0, 7) || 'No commit'}</p><p className="mt-1 text-xs text-muted-foreground">{activeDeploy?.commitMessage || 'No commit message available'}</p></div><div><p className="section-label">Build details</p><p className="mt-2 text-sm text-zinc-300">{project.buildCommand || 'npm run build'}</p><p className="mt-1 text-xs text-muted-foreground">Output: {project.outputDirectory || 'dist'} · Runtime: Node.js</p></div></div>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-4"><div className="border-b border-border px-5 py-4"><h2 className="text-sm font-medium">Deployment information</h2></div><div className="flex flex-col gap-4 p-5 text-sm"><div className="flex justify-between gap-4"><span className="text-muted-foreground">Framework</span><span>{project.preset || 'Other'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Branch</span><span className="font-mono text-xs">{project.branch || 'main'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Source</span><span>{activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Region</span><span>Default</span></div></div></div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-12">
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300"><Activity className="size-4" /></div>
+                    <div>
+                      <p className="text-sm font-medium">Production activity</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{metrics?.pageviews?.toLocaleString() || 0} pageviews · {metrics?.avgResponse || 0}ms average response · {metrics?.health || 100}% build success</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('Observability')}>View observability<ChevronRight data-icon="inline-end" /></Button>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === "Observability" && (
+            <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold tracking-[-0.02em]">Observability</h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">A simple view of how your project is performing in production.</p>
+                </div>
+                <span className="font-mono text-[11px] text-zinc-500">Last 7 days · Updated just now</span>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {deployments.map((d, index) => {
-                  const isCurrent = index === 0 && d.status === 'SUCCESS';
-                  const isActiveView = activeDeploy?.id === d.id;
-                  return (
-                    <div
-                      key={d.id}
-                      onClick={() => { setActiveDeploy(d); setLogs([]); }}
-                      className={`group flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
-                        isActiveView 
-                          ? 'bg-[#111] border-[#444] shadow-[0_0_15px_rgba(0,0,0,0.5)]' 
-                          : 'bg-[#0A0A0A] border-[#1E1E1E] hover:border-[#333] hover:bg-[#0f0f0f]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-inner">
-                          {project.name.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-3">
-                            <span className="font-semibold text-sm text-gray-100 group-hover:text-white transition-colors">
-                              Deployment: {d.commitSha.slice(0, 7)}
-                            </span>
-                            {isCurrent && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-[#1A1A40] text-[#7B7BFF] border border-[#2a2a60]">
-                                CURRENT
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-gray-500 font-mono">
-                            <div className="flex items-center gap-1.5">
-                              <GitBranch className="w-3 h-3" /> {d.branch || 'main'}
-                            </div>
-                            <span>{d.commitSha.slice(0, 7)}</span>
-                            <div className="flex items-center gap-1.5">
-                              <Clock className="w-3 h-3" /> 
-                              {new Date(d.deployedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                          </div>
-                        </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Pageviews</span><Activity className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.pageviews?.toLocaleString() || 0}</p>
+                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Unique visitors</span><Users className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.visitors?.toLocaleString() || 0}</p>
+                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Avg. response</span><Gauge className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.avgResponse || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">ms</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Fast for your visitors</p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Avg. build</span><Timer className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.avgBuild || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">s</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Across recent deployments</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+                <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-8">
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                    <div><h3 className="text-sm font-medium">Traffic</h3><p className="mt-1 text-xs text-muted-foreground">Pageviews and visitors over the past seven days.</p></div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-200" />Pageviews</span><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-600" />Visitors</span></div>
+                  </div>
+                  <div className="h-[280px] px-2 pb-3 pt-5">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={metrics?.trafficData || []} margin={{ top: 5, right: 12, left: -16, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="pageviews" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#e4e4e7" stopOpacity={0.18} /><stop offset="100%" stopColor="#e4e4e7" stopOpacity={0} /></linearGradient>
+                          <linearGradient id="visitors" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#71717a" stopOpacity={0.18} /><stop offset="100%" stopColor="#71717a" stopOpacity={0} /></linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
+                        <XAxis axisLine={false} dataKey="day" tick={{ fill: '#71717a', fontSize: 11 }} tickLine={false} />
+                        <YAxis axisLine={false} tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} tickLine={false} />
+                        <Tooltip contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 }} cursor={{ stroke: '#52525b' }} labelStyle={{ color: '#a1a1aa' }} />
+                        <Area dataKey="pageviews" fill="url(#pageviews)" stroke="#e4e4e7" strokeWidth={2} type="monotone" />
+                        <Area dataKey="visitors" fill="url(#visitors)" stroke="#71717a" strokeWidth={2} type="monotone" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-4">
+                  <div className="flex items-center gap-2 border-b border-border px-5 py-4"><MapPinned className="size-3.5 text-zinc-500" /><div><h3 className="text-sm font-medium">Traffic location</h3><p className="mt-1 text-xs text-muted-foreground">Where your visitors are coming from.</p></div></div>
+                  <div className="divide-y divide-border px-5 py-1">
+                    {metrics?.locations?.length > 0 ? metrics.locations.map((location: any) => (
+                      <div key={location.country} className="py-3">
+                        <div className="flex items-center justify-between text-xs"><span className="flex items-center gap-2 text-zinc-300"><span className="flex size-5 items-center justify-center rounded bg-zinc-900 font-mono text-[9px] text-zinc-500">{location.code}</span>{location.country}</span><span className="font-mono text-zinc-500">{location.share}%</span></div>
+                        <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-900"><div className="h-full rounded-full bg-zinc-500" style={{ width: `${location.share}%` }} /></div>
                       </div>
-                      
-                      <div className="flex items-center gap-4">
-                        {renderStatusBadge(d.status)}
-                      </div>
-                    </div>
-                  );
-                })}
-                {deployments.length === 0 && (
-                  <div className="text-center py-12 border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] text-gray-500 text-sm">
-                    No deployments found. Trigger a deploy to see history here.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Sidebar */}
-            <div className="lg:col-span-4 flex flex-col gap-6">
-              {/* Current Deployment Config */}
-              <div className="border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#1E1E1E]">
-                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Current Deployment</h3>
-                </div>
-                <div className="p-4 flex flex-col gap-4 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Status</span>
-                    {renderStatusBadge(currentDeployStatus)}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Region</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight">iad1 · fra1 · sin1</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Runtime</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight">Node.js 22.x</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Build</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight">48s</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Size</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight">4.2 MB</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Build Configuration */}
-              <div className="border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#1E1E1E]">
-                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Build Configuration</h3>
-                </div>
-                <div className="p-4 flex flex-col gap-4 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Framework</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">{project.preset || 'Next.js'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Build cmd</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">{project.buildCommand || 'npm run build'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Output dir</span>
-                    <span className="text-gray-200 font-mono text-[11px] tracking-tight bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">{project.outputDirectory || '.next'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Domains */}
-              <div className="border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#1E1E1E]">
-                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase">Domains</h3>
-                </div>
-                <div className="p-4 flex flex-col gap-4">
-                  <div className="flex items-center justify-between group">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
-                      <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">{project.subdomain}.localhost</span>
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase bg-[#1A1A40] text-[#7B7BFF] border border-[#2a2a60]">Primary</span>
-                    </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#00E599]" />
-                  </div>
-                  <div className="flex items-center justify-between group">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
-                      <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">www.{project.subdomain}.localhost</span>
-                    </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#00E599]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Logs Tab */}
-        {activeTab === "Logs" && (
-          <div className="flex flex-col border border-[#1E1E1E] rounded-xl bg-[#000] overflow-hidden shadow-2xl h-[700px] w-full">
-            <div className="border-b border-[#1E1E1E] bg-[#0A0A0A] py-3 px-5 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3">
-                <Terminal className="w-4 h-4 text-gray-400" /> 
-                <span className="text-sm font-semibold text-gray-200">Build Output</span>
-                <span className="text-gray-500 font-mono text-xs">({activeDeploy?.commitSha?.slice(0,7)})</span>
-              </div>
-              {renderStatusBadge(activeDeploy?.status)}
-            </div>
-            
-            <div className="flex-1 p-5 font-mono text-sm leading-relaxed bg-[#000] text-gray-300 overflow-y-auto">
-              {logs.length === 0 && <div className="text-gray-600 italic flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> Waiting for logs…</div>}
-              {logs.map((log, i) => (
-                <div key={i} className={`break-words mb-1 ${log.stream === 'STDERR' ? 'text-[#FF5555]' : 'text-gray-300'}`}>
-                  {log.text}
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-            
-            <div className="p-4 border-t border-[#1E1E1E] bg-[#0A0A0A] flex justify-between items-center shrink-0">
-              <span className="text-xs text-gray-400 font-medium">
-                Deployed via {activeDeploy?.triggerSource || 'API'}
-              </span>
-              <a href={`http://${activeDeploy?.id}.localhost`} target="_blank" rel="noreferrer">
-                <Button variant="outline" size="sm" className="h-8 px-3 text-xs bg-[#111] border-[#333] hover:bg-[#222] hover:text-white text-gray-300">
-                  Preview Deployment <ExternalLink className="w-3.5 h-3.5 ml-2" />
-                </Button>
-              </a>
-            </div>
-          </div>
-        )}
-
-        {/* Settings Tab */}
-        {activeTab === "Settings" && (
-          <div className="flex flex-col gap-10 max-w-5xl w-full mx-auto">
-            {/* General Settings */}
-            <div className="flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-full md:w-1/3 flex flex-col gap-2">
-                <h2 className="text-lg font-semibold text-white">General Settings</h2>
-                <p className="text-sm text-gray-500">View and update your project's general settings and repository connections.</p>
-              </div>
-              <div className="w-full md:w-2/3 border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] overflow-hidden">
-                <div className="p-6 flex flex-col gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-300">Project Name</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-[#000] border border-[#333] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-400 transition-colors"
-                      value={settingsForm.name || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-300">Production Branch</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-[#000] border border-[#333] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-400 transition-colors"
-                      value={settingsForm.branch || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, branch: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-300">Root Directory</label>
-                    <input 
-                      type="text"
-                      placeholder="./"
-                      className="w-full bg-[#000] border border-[#333] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-400 transition-colors"
-                      value={settingsForm.rootDirectory || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, rootDirectory: e.target.value })}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">The directory within your repository that contains your source code.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Build Settings */}
-            <div className="flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-full md:w-1/3 flex flex-col gap-2">
-                <h2 className="text-lg font-semibold text-white">Build & Development</h2>
-                <p className="text-sm text-gray-500">Configure how your project is built and deployed.</p>
-              </div>
-              <div className="w-full md:w-2/3 border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] overflow-hidden flex flex-col">
-                <div className="p-6 flex flex-col gap-6 flex-1">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-300">Build Command</label>
-                    <input 
-                      type="text"
-                      placeholder="npm run build"
-                      className="w-full bg-[#000] border border-[#333] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-400 transition-colors font-mono"
-                      value={settingsForm.buildCommand || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, buildCommand: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-300">Output Directory</label>
-                    <input 
-                      type="text"
-                      placeholder=".next"
-                      className="w-full bg-[#000] border border-[#333] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-400 transition-colors font-mono"
-                      value={settingsForm.outputDirectory || ''}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, outputDirectory: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="px-6 py-4 bg-[#111] border-t border-[#1E1E1E] flex justify-end">
-                  <Button onClick={saveSettings} disabled={isSaving} className="bg-white text-black hover:bg-gray-200 font-medium">
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Danger Zone */}
-            <div className="flex flex-col md:flex-row gap-8 items-start mt-8">
-              <div className="w-full md:w-1/3 flex flex-col gap-2">
-                <h2 className="text-lg font-semibold text-[#FF5555]">Danger Zone</h2>
-                <p className="text-sm text-gray-500">Irreversible and destructive actions.</p>
-              </div>
-              <div className="w-full md:w-2/3 border border-[#FF5555]/30 rounded-xl bg-[#1A0505] overflow-hidden">
-                <div className="p-6 flex flex-col gap-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex flex-col gap-1">
-                      <h4 className="text-sm font-bold text-white">Auto-Deploy (Webhook)</h4>
-                      <p className="text-xs text-gray-400">Currently {project.webhookId ? 'enabled' : 'disabled'}. Enables automatic deployments on git push.</p>
-                    </div>
-                    {!project.webhookId ? (
-                      <Button onClick={enableWebhook} disabled={enablingWebhook} variant="outline" className="border-[#FF5555]/50 text-gray-300 hover:text-white hover:bg-[#FF5555]/20 shrink-0">
-                        {enablingWebhook ? 'Enabling...' : 'Enable Auto-Deploy'}
-                      </Button>
-                    ) : (
-                      <Badge variant="outline" className="px-3 py-1 border-[#00E599] text-[#00E599] bg-[#00E599]/10 shrink-0">Active</Badge>
+                    )) : (
+                      <div className="py-8 text-center text-sm text-muted-foreground">No location data available yet.</div>
                     )}
                   </div>
-                  <div className="h-px w-full bg-[#FF5555]/20" />
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex flex-col gap-1">
-                      <h4 className="text-sm font-bold text-white">Delete Project</h4>
-                      <p className="text-xs text-gray-400">Permanently remove this project and all its deployments.</p>
+                </section>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <section className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Response time</h3><p className="mt-1 text-xs text-muted-foreground">Average time for your site to respond to visitors.</p></div>
+                  <div className="flex items-end justify-between gap-6 p-5"><div><p className="text-3xl font-semibold tracking-[-0.04em]">{metrics?.avgResponse || 0}<span className="ml-1 text-base font-medium text-muted-foreground">ms</span></p><p className="mt-1 text-xs text-muted-foreground">Live real-time average</p></div><div className="flex h-12 items-end gap-1" aria-label="Response time trend"><span className="h-5 w-2 rounded-sm bg-zinc-700" /><span className="h-8 w-2 rounded-sm bg-zinc-600" /><span className="h-6 w-2 rounded-sm bg-zinc-700" /><span className="h-10 w-2 rounded-sm bg-zinc-500" /><span className="h-7 w-2 rounded-sm bg-zinc-600" /><span className="h-9 w-2 rounded-sm bg-zinc-500" /><span className="h-11 w-2 rounded-sm bg-zinc-400" /></div></div>
+                </section>
+                <section className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Deployment health</h3><p className="mt-1 text-xs text-muted-foreground">Success rate across your last 20 deployments.</p></div>
+                  <div className="flex items-center justify-between gap-6 p-5"><div><p className="text-3xl font-semibold tracking-[-0.04em]">{metrics?.health || 100}<span className="ml-1 text-base font-medium text-muted-foreground">%</span></p><p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><CircleCheck className="size-3.5 text-emerald-400" />{metrics?.successfulDeployments || 0} successful · <CircleX className="size-3.5 text-red-400" />{metrics?.failedDeployments || 0} failed</p></div><div className="flex size-16 items-center justify-center rounded-full border-4 border-emerald-500/80 border-l-zinc-800 border-b-zinc-800 text-[11px] font-medium text-zinc-300">{metrics?.successfulDeployments || 0}/{metrics?.totalDeployments || 0}</div></div>
+                </section>
+              </div>
+            </div>
+          )}
+          {activeTab === "Deployments" && (
+            <div className="app-scroll grid w-full grid-cols-1 items-start gap-5 overflow-y-auto pb-8 lg:grid-cols-12">
+              <div className="flex flex-col gap-3 lg:col-span-8">
+                <div className="flex items-center justify-between">
+                  <div><h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">Deployments</h2><p className="mt-1 text-xs text-muted-foreground">Select a deployment to inspect its build output.</p></div>
+                  <span className="font-mono text-[11px] text-zinc-500">{deployments.length} total</span>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  {deployments.map((d, index) => {
+                    const isCurrent = index === 0 && d.status === 'SUCCESS';
+                    const isActiveView = activeDeploy?.id === d.id;
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => { setActiveDeploy(d); setLogs([]); }}
+                        className={`group flex items-center justify-between border-b border-border px-4 py-3.5 transition-colors last:border-b-0 cursor-pointer ${
+                          isActiveView
+                            ? 'bg-zinc-900/80'
+                            : 'hover:bg-zinc-900/50'
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className={`size-2 shrink-0 rounded-full ${d.status === 'SUCCESS' ? 'bg-emerald-400' : d.status === 'FAILED' ? 'bg-red-400' : 'bg-zinc-500'}`} />
+                          <div className="min-w-0 flex flex-col gap-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-sm font-medium text-foreground">
+                                {d.commitSha.slice(0, 7)}
+                              </span>
+                              {isCurrent && (
+                                <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium tracking-wider text-emerald-400">
+                                  PRODUCTION
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <GitBranch className="size-3" /> {d.branch || 'main'}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="size-3" />
+                                {new Date(d.deployedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4 flex shrink-0 items-center gap-3">
+                          {renderStatusBadge(d.status)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {deployments.length === 0 && (
+                    <div className="p-12 text-center text-sm text-muted-foreground">
+                      No deployments found. Trigger a deploy to see history here.
                     </div>
-                    <Button onClick={deleteProject} variant="destructive" className="bg-[#FF5555] text-white hover:bg-[#FF3333] shrink-0 font-medium border-0">
-                      Delete Project
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 lg:col-span-4">
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border bg-zinc-900/30 px-4 py-3">
+                    <h3 className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Current deployment</h3>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Status</span>
+                      {renderStatusBadge(currentDeployStatus)}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Runtime</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight">Node.js 22.x</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Build Time</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight">~45s</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border bg-zinc-900/30 px-4 py-3">
+                    <h3 className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Build configuration</h3>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Framework</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight bg-muted px-2 py-0.5 rounded border border-border">{project.preset || 'Next.js'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Command</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight bg-muted px-2 py-0.5 rounded border border-border">{project.buildCommand || 'npm run build'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "Logs" && (
+            <div className="flex h-[calc(100vh-340px)] min-h-[400px] w-full flex-col overflow-hidden rounded-lg border border-border bg-card">
+              <div className="flex shrink-0 flex-col gap-4 border-b border-border bg-zinc-900/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <FileText className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Build logs</span>
+                  <span className="font-mono text-xs text-muted-foreground">{activeDeploy?.commitSha?.slice(0,7) || 'No deployment selected'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input value={logQuery} onChange={(event) => setLogQuery(event.target.value)} placeholder="Find in logs" className="h-7 w-40 rounded-md border border-zinc-700 bg-zinc-950 pl-7 pr-2 text-xs outline-none placeholder:text-zinc-500 focus:border-zinc-500" />
+                  </div>
+                  <Button variant="ghost" size="icon-xs" title="Copy logs" onClick={() => void copyLogs()}><Copy /></Button>
+                  <Button variant="ghost" size="icon-xs" title="Download logs" onClick={downloadLogs}><Download /></Button>
+                  {renderStatusBadge(activeDeploy?.status || '')}
+                </div>
+              </div>
+
+              <div className="app-scroll min-h-0 flex-1 overflow-y-auto bg-zinc-950 py-3 font-mono text-xs leading-5 text-zinc-300">
+                {logs.length === 0 && <div className="flex h-full min-h-80 items-center justify-center gap-2 text-zinc-500 animate-pulse"><RefreshCw className="size-3.5 animate-spin" />Waiting for build output</div>}
+                {logs.filter((log) => log.text.toLowerCase().includes(logQuery.toLowerCase())).map((log, i) => (
+                  <div key={i} className="grid grid-cols-[78px_minmax(0,1fr)] px-4 py-1 hover:bg-zinc-900/70">
+                    <span className="select-none text-zinc-600">{String(i + 1).padStart(4, '0')}</span>
+                    <span className={`break-words whitespace-pre-wrap ${
+                      log.stream === 'STDERR' || log.text.toLowerCase().includes('error') || log.text.toLowerCase().includes('failed')
+                        ? 'text-red-400'
+                        : 'text-zinc-400'
+                    }`}>{log.text}</span>
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+
+              <div className="flex shrink-0 items-center justify-between border-t border-border bg-zinc-900/50 px-4 py-2">
+                <span className="text-xs text-muted-foreground">Streaming · {activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual deployment'}</span>
+                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
+                  <Button variant="ghost" size="sm">
+                    Visit deployment <ExternalLink data-icon="inline-end" />
+                  </Button>
+                </a>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "Settings" && (
+            <div className="app-scroll flex w-full flex-col gap-8 overflow-y-auto pb-12">
+              <div className="flex flex-col items-start gap-8 md:flex-row">
+                <div className="flex w-full flex-col gap-2 md:w-1/3">
+                  <p className="section-label">Project</p><h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">General settings</h2>
+                  <p className="text-sm text-muted-foreground">Update your project&apos;s general settings and repository connections.</p>
+                </div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
+                  <div className="flex flex-col gap-5 p-5">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Project Name</label>
+                      <input
+                        type="text"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                        value={settingsForm.name || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Production Branch</label>
+                      <input
+                        type="text"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                        value={settingsForm.branch || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, branch: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Root Directory</label>
+                      <input
+                        type="text"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:ring-1 focus:ring-ring"
+                        value={settingsForm.rootDirectory || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, rootDirectory: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-5 py-3">
+                    <Button onClick={saveSettings} disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </div>
                 </div>
               </div>
+
+              <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
+                <div className="w-full md:w-1/3"><p className="section-label">Build</p><h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Build settings</h2><p className="mt-1 text-sm text-muted-foreground">Set the command and output used for production deployments.</p></div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
+                  <div className="flex flex-col gap-6 p-6">
+                    <div className="flex flex-col gap-2"><label className="text-sm font-medium">Build Command</label><input type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring" value={settingsForm.buildCommand || ''} onChange={(e) => setSettingsForm({ ...settingsForm, buildCommand: e.target.value })} /></div>
+                    <div className="flex flex-col gap-2"><label className="text-sm font-medium">Output Directory</label><input type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring" value={settingsForm.outputDirectory || ''} onChange={(e) => setSettingsForm({ ...settingsForm, outputDirectory: e.target.value })} /></div>
+                  </div>
+                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-6 py-4"><Button onClick={saveSettings} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save build settings'}</Button></div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
+                <div className="w-full md:w-1/3"><p className="section-label">Source control</p><h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Git integration</h2><p className="mt-1 text-sm text-muted-foreground">Connect pushes on your production branch to automatic deployments.</p></div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3"><div className="flex flex-col gap-4 p-6"><div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">GitHub webhook</p><p className="mt-1 text-xs text-muted-foreground">{project.webhookId ? 'Auto-deploy is enabled for this project.' : 'Deploy automatically when a commit reaches the production branch.'}</p></div><Button variant="outline" size="sm" onClick={enableWebhook} disabled={enablingWebhook}>{enablingWebhook ? 'Connecting…' : project.webhookId ? 'Enabled' : 'Enable'}</Button></div><div className="flex items-center justify-between gap-4 border-t border-border pt-4 text-sm"><span className="text-muted-foreground">Repository</span><span className="truncate font-mono text-xs text-zinc-300">{project.repoUrl}</span></div></div></div>
+              </div>
+
+              <div className="mt-8 flex flex-col items-start gap-8 md:flex-row">
+                <div className="flex w-full flex-col gap-2 md:w-1/3">
+                  <p className="section-label text-destructive/80">Danger zone</p><h2 className="text-lg font-semibold text-destructive">Delete project</h2>
+                  <p className="text-sm text-muted-foreground">Irreversible and destructive actions.</p>
+                </div>
+                <div className="w-full md:w-2/3 border border-destructive/30 rounded-lg bg-destructive/5 overflow-hidden">
+                  <div className="p-6 flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex flex-col gap-1">
+                        <h4 className="text-sm font-bold text-foreground">Delete Project</h4>
+                        <p className="text-xs text-muted-foreground">Permanently remove this project and all its deployments.</p>
+                      </div>
+                      <Button onClick={() => setShowDeleteAlert(true)} variant="destructive" className="shrink-0 font-medium">
+                        Delete Project
+                      </Button>
+                      
+                      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete the project <strong className="text-foreground">{project?.name}</strong> and remove all associated deployments and data from our servers.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={deleteProject} 
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete Project
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Other Tabs Placeholder */}
-        {["Analytics", "Environment", "Domains"].includes(activeTab) && (
-          <div className="flex flex-col items-center justify-center py-32 border border-[#1E1E1E] rounded-xl bg-[#0A0A0A] w-full">
-            <Settings className="w-12 h-12 text-gray-600 mb-4" />
-            <h3 className="text-xl font-bold text-gray-200 mb-2">{activeTab}</h3>
-            <p className="text-sm text-gray-500 max-w-md text-center">
-              This section is currently under development. Configuration options and metrics will be available here soon.
-            </p>
-          </div>
-        )}
-
+          {activeTab === "Domains" && (
+            <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
+              <div><h2 className="text-lg font-semibold tracking-[-0.02em]">Domains</h2><p className="mt-1 text-sm text-muted-foreground">Manage where people can reach this project.</p></div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="text-sm font-medium">Production domain</h3><p className="mt-1 text-xs text-muted-foreground">The default URL for your live deployment.</p></div><Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Active</Badge></div>
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.localhost</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
+              </div>
+              <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20 px-5 py-4"><p className="text-sm font-medium">Custom domains</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Connect a custom domain when you&apos;re ready. DNS verification and SSL will be handled here.</p></div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

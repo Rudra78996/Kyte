@@ -22,19 +22,21 @@ export class ProjectsService {
         branch: dto.branch || 'main',
         subdomain: this.generateSubdomain(),
         userId,
+        organizationId: dto.organizationId,
       },
     });
   }
 
-  async findAll(userId: string, skip = 0, take = 20) {
+  async findAll(userId: string, skip = 0, take = 20, organizationId?: string) {
+    const where = organizationId ? { userId, organizationId } : { userId };
     const [projects, total] = await Promise.all([
       this.prisma.project.findMany({
-        where: { userId },
+        where,
         skip,
         take,
         orderBy: { updatedAt: 'desc' },
       }),
-      this.prisma.project.count({ where: { userId } }),
+      this.prisma.project.count({ where }),
     ]);
     return { projects, total, skip, take };
   }
@@ -92,19 +94,36 @@ export class ProjectsService {
   async delete(userId: string, projectId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
+      include: { organization: { include: { members: true } } }
     });
 
-    if (!project) {
-      throw new NotFoundException('Project not found');
+    if (!project) throw new NotFoundException('Project not found');
+    
+    // Check ownership or org admin/owner
+    const isOwner = project.userId === userId;
+    const orgMember = project.organization?.members.find(m => m.userId === userId);
+    const hasOrgAccess = orgMember && ['OWNER', 'ADMIN'].includes(orgMember.role);
+
+    if (!isOwner && !hasOrgAccess) {
+      throw new ForbiddenException('You do not have permission to delete this project');
     }
 
-    if (project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    return this.prisma.project.delete({
+    // Unset activeDeployId first to break cyclic relation constraint
+    await this.prisma.project.update({
       where: { id: projectId },
+      data: { activeDeployId: null }
     });
+
+    // Delete in transaction
+    await this.prisma.$transaction([
+      this.prisma.requestLog.deleteMany({ where: { projectId } }),
+      this.prisma.deploymentLogChunk.deleteMany({ where: { deployment: { projectId } } }),
+      this.prisma.deployment.deleteMany({ where: { projectId } }),
+      this.prisma.gitHubConnection.deleteMany({ where: { projectId } }),
+      this.prisma.project.delete({ where: { id: projectId } })
+    ]);
+
+    return { success: true, message: 'Project deleted successfully' };
   }
 
   async enableWebhook(userId: string, projectId: string) {
@@ -189,6 +208,122 @@ export class ProjectsService {
 
     return { success: true, message: 'Webhook successfully created on GitHub!' };
   }
+
+  async getMetrics(userId: string, projectId: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.userId !== userId) throw new ForbiddenException('You do not have access to this project');
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const [totalRequests, uniqueVisitorsCount, avgResponseAgg] = await Promise.all([
+      this.prisma.requestLog.count({ where: { projectId, timestamp: { gte: sevenDaysAgo } } }),
+      
+      this.prisma.requestLog.groupBy({
+        by: ['ipAddress'],
+        where: { projectId, timestamp: { gte: sevenDaysAgo }, ipAddress: { not: null } }
+      }),
+
+      this.prisma.requestLog.aggregate({
+        where: { projectId, timestamp: { gte: sevenDaysAgo } },
+        _avg: { responseTime: true }
+      })
+    ]);
+
+    const visitors = uniqueVisitorsCount.length;
+    const avgResponse = Math.round(avgResponseAgg._avg.responseTime || 0);
+
+    const allLogs = await this.prisma.requestLog.findMany({
+      where: { projectId, timestamp: { gte: sevenDaysAgo } },
+      select: { timestamp: true, ipAddress: true, country: true, countryCode: true }
+    });
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const trafficMap = new Map<string, { pageviews: number, ips: Set<string> }>();
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      trafficMap.set(days[d.getDay()], { pageviews: 0, ips: new Set() });
+    }
+
+    const locationsMap = new Map<string, { code: string, visitors: Set<string> }>();
+
+    for (const log of allLogs) {
+      const dayStr = days[log.timestamp.getDay()];
+      if (trafficMap.has(dayStr)) {
+        const t = trafficMap.get(dayStr)!;
+        t.pageviews++;
+        if (log.ipAddress) t.ips.add(log.ipAddress);
+      }
+
+      const c = log.country || 'Unknown';
+      const code = log.countryCode || 'UN';
+      if (!locationsMap.has(c)) {
+        locationsMap.set(c, { code, visitors: new Set() });
+      }
+      if (log.ipAddress) locationsMap.get(c)!.visitors.add(log.ipAddress);
+    }
+
+    const trafficData = Array.from(trafficMap.entries()).map(([day, data]) => ({
+      day,
+      pageviews: data.pageviews,
+      visitors: data.ips.size
+    }));
+
+    const locationsList = Array.from(locationsMap.entries()).map(([country, data]) => ({
+      country,
+      code: data.code,
+      visitors: data.visitors.size,
+      share: 0
+    })).sort((a, b) => b.visitors - a.visitors).slice(0, 5);
+
+    const totalLocVisitors = locationsList.reduce((acc, l) => acc + l.visitors, 0);
+    locationsList.forEach(l => {
+      l.share = totalLocVisitors > 0 ? Math.round((l.visitors / totalLocVisitors) * 100) : 0;
+    });
+
+    const deployments = await this.prisma.deployment.findMany({
+      where: { projectId },
+      orderBy: { deployedAt: 'desc' },
+      take: 20
+    });
+
+    let successful = 0;
+    let failed = 0;
+    let totalBuildTime = 0;
+    let validBuilds = 0;
+
+    deployments.forEach(d => {
+      if (d.status === 'SUCCESS') successful++;
+      if (d.status === 'FAILED') failed++;
+      if ((d.status === 'SUCCESS' || d.status === 'FAILED') && d.updatedAt > d.deployedAt) {
+        totalBuildTime += (d.updatedAt.getTime() - d.deployedAt.getTime());
+        validBuilds++;
+      }
+    });
+
+    const avgBuild = validBuilds > 0 ? Math.round((totalBuildTime / validBuilds) / 1000) : 0;
+    const health = deployments.length > 0 ? Math.round((successful / deployments.length) * 100) : 100;
+
+    return {
+      pageviews: totalRequests,
+      visitors,
+      avgResponse,
+      avgBuild,
+      health,
+      successfulDeployments: successful,
+      failedDeployments: failed,
+      totalDeployments: deployments.length,
+      trafficData,
+      locations: locationsList
+    };
+  }
+
 
   private generateSubdomain(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;

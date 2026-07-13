@@ -28,7 +28,7 @@ export default function VueDocs() {
           </CardHeader>
           <CardContent className="space-y-4 text-neutral-300 text-sm">
             <p>
-              Vue 3 applications (whether built with Vue CLI or Vite) compile cleanly into static assets. They are fully compatible with the platform's architecture.
+              Vue 3 applications (whether built with Vue CLI or Vite) compile cleanly into static assets. They are fully compatible with the platform&apos;s architecture.
             </p>
             <div className="flex items-center gap-2 mt-4 text-neutral-400 font-medium">
               <CheckCircle2 className="w-4 h-4" />

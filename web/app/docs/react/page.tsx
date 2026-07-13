@@ -58,7 +58,7 @@ export default function ReactDocs() {
               <div className="bg-neutral-900 px-3 py-2.5 rounded border border-neutral-800 font-mono text-[13px] text-neutral-300">
                 dist
               </div>
-              <span className="text-xs text-neutral-500 mt-1">Vite places compiled assets in 'dist'.</span>
+              <span className="text-xs text-neutral-500 mt-1">Vite places compiled assets in &apos;dist&apos;.</span>
             </div>
           </CardContent>
         </Card>
