@@ -1,6 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
 
-export async function request(method: string, path: string, body: any = null, token?: string | null) {
+export async function request(method: string, path: string, body: unknown = null, token?: string | null) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -22,7 +22,11 @@ export async function request(method: string, path: string, body: any = null, to
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || 'Request failed');
+    const requestError = Object.assign(new Error(err.message || 'Request failed'), {
+      status: res.status,
+      details: err,
+    });
+    throw requestError;
   }
 
   return res.json();

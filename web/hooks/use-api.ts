@@ -8,7 +8,7 @@ export function useApiRequest() {
   const { getToken } = useAuth();
 
   const apiRequest = useCallback(
-    async (method: string, path: string, body: any = null) => {
+    async (method: string, path: string, body: unknown = null) => {
       const token = await getToken();
       return request(method, path, body, token);
     },

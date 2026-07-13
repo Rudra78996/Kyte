@@ -1,171 +1,225 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useApiRequest } from '@/hooks/use-api';
-import Link from 'next/link';
-import { Search, ChevronDown, LayoutGrid, LayoutList, Plus, Activity, MoreHorizontal, GitBranch, ArrowRight } from 'lucide-react';
-import { FaGithub } from 'react-icons/fa';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Box, ChevronRight, GitBranch, GitCommitHorizontal, Plus, Rocket, Settings2 } from "lucide-react";
+import { useApiRequest } from "@/hooks/use-api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ProjectAvatar } from "@/components/project-avatar";
+
+type DeploymentStatus = "QUEUED" | "BUILDING" | "UPLOADING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "CANCELED";
+
+type Deployment = {
+  id: string;
+  projectId: string;
+  status: DeploymentStatus;
+  commitSha: string;
+  commitMessage?: string | null;
+  branch: string;
+  triggerSource?: "MANUAL" | "WEBHOOK";
+  deployedAt: string;
+  updatedAt: string;
+};
+
+type Project = {
+  id: string;
+  name: string;
+  subdomain: string;
+  preset?: string | null;
+  branch?: string | null;
+  buildCommand?: string | null;
+  outputDirectory?: string | null;
+  updatedAt: string;
+};
+
+type ProjectWithDeployment = Project & { latestDeployment?: Deployment };
 
 export default function Dashboard() {
   const apiRequest = useApiRequest();
-  const [projects, setProjects] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [newProjectRepo, setNewProjectRepo] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [projects, setProjects] = useState<ProjectWithDeployment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  const loadProjects = async () => {
-    try {
-      const data = await apiRequest('GET', '/projects');
-      setProjects(data.projects || []);
-    } catch (err) {}
-  };
-
-  const createProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const loadWorkspace = useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
-      await apiRequest('POST', '/projects', {
-        name: newProjectRepo.split('/').pop() || 'My Project',
-        repoUrl: newProjectRepo,
-      });
-      setNewProjectRepo('');
-      setOpen(false);
-      loadProjects();
-    } catch (err: any) { setError(err.message); }
-    finally { setLoading(false); }
-  };
+      // First fetch organizations to scope projects to the active org
+      const orgsResponse = await apiRequest("GET", "/organizations") as { organizations?: { id: string }[] };
+      const orgs = orgsResponse.organizations || [];
+      
+      const savedOrgId = typeof window !== 'undefined' ? localStorage.getItem("kyte-active-org") : null;
+      const orgId = savedOrgId && orgs.find(o => o.id === savedOrgId) 
+        ? savedOrgId 
+        : (orgs.length > 0 ? orgs[0].id : null);
+
+      const projectsResponse = await apiRequest("GET", orgId ? `/projects?organizationId=${orgId}` : "/projects") as { projects?: Project[] };
+      const fetchedProjects = projectsResponse.projects || [];
+      const rows = await Promise.all(fetchedProjects.map(async (project) => {
+        try {
+          const response = await apiRequest("GET", `/projects/${project.id}/deployments`) as { deployments?: Deployment[] };
+          return { ...project, latestDeployment: response.deployments?.[0] };
+        } catch {
+          return project;
+        }
+      }));
+      setProjects(rows);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadWorkspace(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadWorkspace]);
+
+  const recentDeployments = useMemo(() => projects
+    .flatMap((project) => project.latestDeployment ? [{ project, deployment: project.latestDeployment }] : [])
+    .sort((a, b) => new Date(b.deployment.deployedAt).getTime() - new Date(a.deployment.deployedAt).getTime())
+    .slice(0, 5), [projects]);
+
+  const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      {/* Actions bar */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="relative w-full max-w-[400px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input 
-            className="w-full bg-muted/50 border border-border rounded-md py-2 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-all"
-            placeholder="Search Projects"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+    <div className="app-page flex min-h-full flex-col gap-8">
+      <header className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-heading">Overview</h1>
+          <p className="page-subtitle">Your projects and the latest production activity.</p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center bg-muted/50 border border-border rounded-md p-1 h-[38px]">
-            <button className="p-1.5 text-muted-foreground hover:text-foreground rounded-sm transition-colors">
-              <LayoutList className="w-4 h-4" />
-            </button>
-            <button className="p-1.5 text-foreground bg-accent rounded-sm shadow-sm">
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-          </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger>
-              <div className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-[38px] px-3.5 rounded-md text-sm font-medium transition-colors cursor-pointer">
-                Add New <ChevronDown className="w-4 h-4 opacity-50" />
-              </div>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-base">
-                  <Plus className="size-4" />
-                  Import a Repository
-                </DialogTitle>
-                <DialogDescription>
-                  Paste a public GitHub URL to import and deploy.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={createProject} className="flex flex-col gap-4 mt-2">
-                <div className="relative flex-1">
-                  <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <input
-                    type="url"
-                    placeholder="https://github.com/user/repo"
-                    required
-                    value={newProjectRepo}
-                    onChange={e => setNewProjectRepo(e.target.value)}
-                    className="w-full bg-muted/50 border border-border rounded-md py-2 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-all"
-                  />
-                </div>
-                <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-[38px] px-3.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50">
-                  {loading ? 'Importing…' : 'Deploy'}
-                  {!loading && <ArrowRight className="size-4" />}
-                </button>
-                {error && <p className="text-destructive text-sm mt-1">{error}</p>}
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+        <Button render={<Link href="/new" />}>
+          <Plus data-icon="inline-start" />
+          New project
+        </Button>
+      </header>
 
-      {/* Projects List */}
-      <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Projects</h3>
-        <div className="flex flex-col border border-border rounded-xl bg-muted/50 shadow-sm overflow-hidden">
-          {projects.length > 0 ? projects.map((p, idx) => (
-            <div key={p.id} className={`flex flex-col sm:flex-row sm:items-center p-5 hover:bg-accent/50 transition-colors cursor-pointer ${idx !== projects.length - 1 ? 'border-b border-border' : ''}`}>
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_1.2fr] gap-4 sm:gap-6">
-                
-                {/* Project info */}
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-[42px] h-[42px] bg-background border border-border rounded-full flex items-center justify-center shrink-0 shadow-inner">
-                    <span className="font-semibold text-lg text-foreground">
-                      {p.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex flex-col min-w-0 justify-center">
-                    <Link href={`/projects/${p.id}`} className="text-[15px] font-semibold text-foreground hover:underline truncate">
-                      {p.name}
-                    </Link>
-                    <span className="text-[13px] text-muted-foreground truncate mt-0.5">{p.subdomain}.localhost</span>
-                  </div>
-                </div>
-                
-                {/* Commit info */}
-                <div className="flex flex-col justify-center min-w-0">
-                  <span className="text-sm text-foreground truncate">Initial project setup</span>
-                  <span className="text-[13px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                    Just now <GitBranch className="w-3.5 h-3.5 ml-0.5" /> main
-                  </span>
-                </div>
+      {loading ? <DashboardLoading /> : projects.length === 0 ? <WorkspaceEmpty /> : <>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card className="lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-sm font-medium">Projects</CardTitle>
+                <CardDescription>Current production state for each project.</CardDescription>
               </div>
-              
-              {/* Right actions */}
-              <div className="flex items-center gap-5 mt-4 sm:mt-0 sm:pl-6 sm:ml-auto">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground bg-muted/50 border border-border px-2.5 py-1 rounded-full shadow-sm">
-                  <FaGithub className="w-[14px] h-[14px]" />
-                  <span className="truncate max-w-[150px]">{p.repoUrl.replace('https://github.com/', '')}</span>
-                </div>
-                <div className="w-[26px] h-[26px] rounded-full border border-border bg-background flex items-center justify-center shrink-0">
-                  <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-                </div>
-                <button className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent">
-                  <MoreHorizontal className="w-[18px] h-[18px]" />
-                </button>
+              <div className="flex items-center gap-3">
+                <Input 
+                  placeholder="Search projects..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 w-[200px]"
+                />
+                <Button variant="ghost" size="sm" render={<Link href="/new" />}>Add project<Plus data-icon="inline-end" /></Button>
               </div>
-            </div>
-          )) : (
-            <div className="p-12 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-full bg-muted border border-border flex items-center justify-center mb-4">
-                <Plus className="w-5 h-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="p-0 h-[312px] overflow-y-auto relative">
+              <div className="divide-y divide-border">
+                {filteredProjects.map((project) => <ProjectRow key={project.id} project={project} />)}
               </div>
-              <h3 className="text-foreground font-medium text-[15px] mb-1">No projects yet</h3>
-              <p className="text-[13px] text-muted-foreground max-w-[300px]">
-                Get started by importing a repository. Your projects will appear here once created.
-              </p>
-              <button onClick={() => setOpen(true)} className="mt-6 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 rounded-md text-[13px] font-medium transition-colors">
-                Add New Project
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-4 lg:col-span-4">
+            <Card>
+              <CardHeader className="border-b border-border">
+                <CardTitle className="text-sm font-medium">Quick actions</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 p-4">
+                <Button variant="ghost" className="justify-start" render={<Link href="/new" />}><Plus data-icon="inline-start" />Import repository</Button>
+                <Button variant="ghost" className="justify-start" render={<Link href="/dashboard/deployments" />}><Rocket data-icon="inline-start" />Review deployments</Button>
+                <Button variant="ghost" className="justify-start" render={<Link href="/settings" />}><Settings2 data-icon="inline-start" />Workspace settings</Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="border-b border-border">
+                <CardTitle className="text-sm font-medium">Build configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 p-4 text-sm">
+                <MetaRow label="Projects" value={String(projects.length)} />
+                <MetaRow label="Frameworks" value={[...new Set(projects.map((project) => project.preset || "Other"))].join(", ")} />
+                <MetaRow label="Production branch" value={[...new Set(projects.map((project) => project.branch || "main"))].join(", ")} />
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card className="lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-sm font-medium">Recent deployments</CardTitle>
+                <CardDescription>Most recent deployment for each project.</CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" render={<Link href="/dashboard/deployments" />}>View all<ArrowUpRight data-icon="inline-end" /></Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {recentDeployments.length ? <div className="divide-y divide-border">{recentDeployments.slice(0, 2).map(({ project, deployment }) => <DeploymentRow key={deployment.id} project={project} deployment={deployment} />)}</div> : <div className="px-6 py-10 text-center"><p className="text-sm font-medium">No deployments yet</p><p className="mt-1 text-sm text-muted-foreground">Deploy a repository to see build activity here.</p></div>}
+            </CardContent>
+          </Card>
+          <Card className="lg:col-span-4">
+            <CardHeader className="border-b border-border">
+              <CardTitle className="text-sm font-medium">Environment preview</CardTitle>
+              <CardDescription>Production settings from your projects.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 p-4 text-sm">
+              {projects.slice(0, 3).map((project) => <div key={project.id} className="flex items-center justify-between gap-2"><span className="truncate text-muted-foreground">{project.name}</span><Badge variant="outline" className="shrink-0 font-mono text-[10px]">{project.outputDirectory || "dist"}</Badge></div>)}
+            </CardContent>
+          </Card>
+        </section>
+      </>}
     </div>
   );
+}
+
+function ProjectRow({ project }: { project: ProjectWithDeployment }) {
+  const deployment = project.latestDeployment;
+  return <Link href={`/projects/${project.id}`} className="grid gap-4 px-6 py-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <div className="flex items-center gap-4 min-w-0">
+      <ProjectAvatar projectId={project.id} size={40} className="rounded-md shadow-sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2"><p className="truncate text-base font-medium">{project.name}</p><Badge variant="outline" className="font-normal">{project.preset || "Other"}</Badge></div>
+        <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3 text-orange-400" />{project.branch || "main"}</span><span className="truncate">{project.subdomain}.localhost</span></div>
+      </div>
+    </div>
+    <div className="flex items-center gap-4 sm:justify-end"><StatusBadge status={deployment?.status} /><ChevronRight className="size-4 text-muted-foreground" /></div>
+  </Link>;
+}
+
+function DeploymentRow({ project, deployment }: { project: Project; deployment: Deployment }) {
+  return <Link href={`/projects/${project.id}`} className="grid gap-2 px-6 py-4 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6">
+    <div className="min-w-0"><p className="truncate text-sm font-medium">{deployment.commitMessage || `Deployment ${deployment.commitSha.slice(0, 7)}`}</p><p className="mt-1 text-xs text-muted-foreground">{project.name} · {relativeTime(deployment.deployedAt)}</p></div>
+    <span className="hidden items-center gap-2 font-mono text-xs text-muted-foreground sm:flex"><GitCommitHorizontal className="size-3 text-cyan-400" />{deployment.commitSha.slice(0, 7)}</span>
+    <StatusBadge status={deployment.status} />
+  </Link>;
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return <div className="flex items-start justify-between gap-4"><span className="text-muted-foreground">{label}</span><span className="max-w-[60%] text-right text-xs text-zinc-300">{value}</span></div>;
+}
+
+function StatusBadge({ status }: { status?: DeploymentStatus }) {
+  const labels: Record<DeploymentStatus, string> = { SUCCESS: "Ready", FAILED: "Failed", BUILDING: "Building", UPLOADING: "Uploading", QUEUED: "Queued", TIMEOUT: "Timed out", CANCELED: "Canceled" };
+  const dotColor = status === "SUCCESS" ? "bg-emerald-500" : status === "FAILED" ? "bg-red-500" : status === "BUILDING" || status === "UPLOADING" ? "bg-amber-400 animate-pulse" : status === "TIMEOUT" || status === "CANCELED" ? "bg-zinc-500" : "bg-zinc-400";
+  const textColor = status === "SUCCESS" ? "text-emerald-400" : status === "FAILED" ? "text-red-400" : status === "BUILDING" || status === "UPLOADING" ? "text-amber-300" : "text-zinc-300";
+  const borderColor = status === "SUCCESS" ? "border-emerald-500/30" : status === "FAILED" ? "border-red-500/30" : status === "BUILDING" || status === "UPLOADING" ? "border-amber-500/30" : "border-zinc-700";
+  return <Badge variant="outline" className={`gap-2 bg-zinc-900 font-normal ${textColor} ${borderColor}`}><span className={`size-1.5 rounded-full ${dotColor}`} />{status ? labels[status] : "Not deployed"}</Badge>;
+}
+
+function WorkspaceEmpty() {
+  return <Card><CardContent className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><span className="flex size-10 items-center justify-center rounded border border-border bg-muted"><Box className="size-4 text-muted-foreground" /></span><p className="mt-4 text-sm font-medium">Start with a repository</p><p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Import a Git repository, configure its build, and deploy it to production.</p><Button className="mt-6" render={<Link href="/new" />}><Plus data-icon="inline-start" />New project</Button></CardContent></Card>;
+}
+
+function DashboardLoading() {
+  return <div className="grid grid-cols-1 gap-4 lg:grid-cols-12"><div className="h-72 rounded-lg border border-border bg-card lg:col-span-8" /><div className="h-72 rounded-lg border border-border bg-card lg:col-span-4" /></div>;
+}
+
+function relativeTime(date: string) {
+  const minutes = Math.max(1, Math.floor((Date.now() - new Date(date).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

@@ -1,214 +1,434 @@
 "use client"
 
 import * as React from "react"
-import { usePathname } from "next/navigation"
-
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
+import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link"
+import { useApiRequest } from "@/hooks/use-api"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuAction,
+  SidebarGroup,
+  SidebarGroupLabel,
 } from "@/components/ui/sidebar"
 import {
-  FolderKanbanIcon,
-  RocketIcon,
-  GlobeIcon,
-  Settings2Icon,
-  ActivitySquareIcon,
-  DatabaseZapIcon,
-  ShieldCheckIcon,
-  ZapIcon,
-  TerminalSquareIcon,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  BoxIcon,
+  PlusIcon,
+  MoreHorizontal,
+  Trash2,
+  ExternalLink,
+  ChevronDown,
+  LayoutDashboard,
+  Rocket,
+  X,
+  Command,
+  Building2,
+  Search,
+  AppWindow,
 } from "lucide-react"
 
-const KyteLogo = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0">
-    <path d="M11.5 2.5 4 10l8 12 8-12-7.5-7.5z" />
-    <path d="M12 22V10" />
-    <path d="m4 10 16 0" />
-  </svg>
-)
-
-// Kyte Platform Sidebar Data
-const data = {
-  teams: [
-    {
-      name: "Kyte Platform",
-      logo: <KyteLogo />,
-      plan: "Pro",
-    },
-    {
-      name: "Personal Workspace",
-      logo: <FolderKanbanIcon className="size-4 shrink-0" />,
-      plan: "Hobby",
-    },
-  ],
-  navMain: [
-    {
-      title: "Projects",
-      url: "/dashboard",
-      icon: (
-        <FolderKanbanIcon
-        />
-      ),
-      isActive: true,
-      items: [
-        {
-          title: "All Projects",
-          url: "/dashboard",
-        },
-        {
-          title: "Deployments",
-          url: "/dashboard/deployments",
-        },
-      ],
-    },
-    {
-      title: "Infrastructure",
-      url: "#",
-      icon: (
-        <DatabaseZapIcon
-        />
-      ),
-      items: [
-        {
-          title: "Storage",
-          url: "#",
-        },
-        {
-          title: "Edge Config",
-          url: "#",
-        },
-        {
-          title: "Databases",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Networking",
-      url: "#",
-      icon: (
-        <GlobeIcon
-        />
-      ),
-      items: [
-        {
-          title: "Domains",
-          url: "#",
-        },
-        {
-          title: "Firewall",
-          url: "#",
-        },
-        {
-          title: "CDN Routing",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Observability",
-      url: "#",
-      icon: (
-        <ActivitySquareIcon
-        />
-      ),
-      items: [
-        {
-          title: "Logs",
-          url: "#",
-        },
-        {
-          title: "Speed Insights",
-          url: "#",
-        },
-        {
-          title: "Web Analytics",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Settings",
-      url: "#",
-      icon: (
-        <Settings2Icon
-        />
-      ),
-      items: [
-        {
-          title: "General",
-          url: "#",
-        },
-        {
-          title: "Environment Variables",
-          url: "#",
-        },
-        {
-          title: "Billing",
-          url: "#",
-        },
-        {
-          title: "Security",
-          url: "#",
-        },
-      ],
-    },
-  ],
-  projects: [
-    {
-      name: "API Gateway",
-      url: "#",
-      icon: (
-        <ZapIcon
-        />
-      ),
-    },
-    {
-      name: "Auth Service",
-      url: "#",
-      icon: (
-        <ShieldCheckIcon
-        />
-      ),
-    },
-    {
-      name: "Background Worker",
-      url: "#",
-      icon: (
-        <TerminalSquareIcon
-        />
-      ),
-    },
-  ],
-}
+type RequestError = Error & { status?: number; details?: { suggestedSlug?: string } };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
+  const router = useRouter();
+  const apiRequest = useApiRequest();
 
-  const navMainWithActive = data.navMain.map(item => ({
-    ...item,
-    isActive: pathname.startsWith(item.url) && item.url !== "#"
-  }));
+  interface SidebarOrg {
+    id: string;
+    name: string;
+  }
+
+  interface SidebarProject {
+    id: string;
+    name: string;
+  }
+
+  const [projects, setProjects] = React.useState<SidebarProject[]>([]);
+  const [organizations, setOrganizations] = React.useState<SidebarOrg[]>([]);
+  const [projectSearch, setProjectSearch] = React.useState("");
+  
+  // Read initial activeOrg from localStorage if available
+  const [activeOrg, setActiveOrg] = React.useState<SidebarOrg | null>(null);
+
+  const [projectToDelete, setProjectToDelete] = React.useState<string | null>(null);
+
+  // Sync activeOrg to localStorage
+  React.useEffect(() => {
+    if (activeOrg) {
+      localStorage.setItem("kyte-active-org", activeOrg.id);
+    }
+  }, [activeOrg]);
+
+  // Create Organization modal state
+  const [showCreateOrg, setShowCreateOrg] = React.useState(false);
+  const [newOrgName, setNewOrgName] = React.useState("");
+  const [newOrgSlug, setNewOrgSlug] = React.useState("");
+  const [createOrgLoading, setCreateOrgLoading] = React.useState(false);
+  const [createOrgError, setCreateOrgError] = React.useState("");
+
+  // Fetch organizations only
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const orgsRes = await apiRequest('GET', '/organizations');
+        if (orgsRes.organizations && orgsRes.organizations.length > 0) {
+          setOrganizations(orgsRes.organizations);
+          
+          const savedOrgId = localStorage.getItem("kyte-active-org");
+          const savedOrg = orgsRes.organizations.find((o: SidebarOrg) => o.id === savedOrgId);
+          setActiveOrg(savedOrg || orgsRes.organizations[0]);
+        } else {
+          // Only redirect if the request succeeded but returned empty orgs
+          if (pathname !== '/onboarding') {
+            window.location.href = '/onboarding';
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load sidebar data", e);
+        // Do NOT redirect on error — the error could be transient
+      }
+    })();
+  }, [pathname, apiRequest]);
+
+  // Fetch projects scoped to activeOrg whenever activeOrg changes
+  React.useEffect(() => {
+    if (!activeOrg) return;
+    (async () => {
+      try {
+        const projRes = await apiRequest('GET', `/projects?organizationId=${activeOrg.id}`);
+        setProjects(projRes.projects || []);
+      } catch (e) {
+        console.error("Failed to load projects", e);
+      }
+    })();
+  }, [activeOrg, apiRequest]);
+
+  // Track latest deployments and notify
+  const lastDeploymentStatuses = React.useRef<Record<string, string>>({});
+  
+  React.useEffect(() => {
+    if (!activeOrg) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiRequest('GET', `/organizations/${activeOrg.id}/deployments`);
+        const deployments = res.deployments || [];
+        
+        deployments.forEach((d: any) => {
+          const prevStatus = lastDeploymentStatuses.current[d.id];
+          
+          if (prevStatus && prevStatus !== d.status) {
+            if (d.status === 'SUCCESS') {
+              toast.success(`${d.project?.name || 'Project'} deployed successfully!`, {
+                description: `Commit ${d.commitSha?.slice(0, 7) || ''} is now live.`
+              });
+            } else if (d.status === 'FAILED') {
+              toast.error(`${d.project?.name || 'Project'} deployment failed.`, {
+                description: `Commit ${d.commitSha?.slice(0, 7) || ''} could not be built.`
+              });
+            }
+          }
+          
+          lastDeploymentStatuses.current[d.id] = d.status;
+        });
+      } catch (e) {
+        // silently fail polling
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [activeOrg, apiRequest]);
+
+  const handleCreateOrg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateOrgError("");
+    setCreateOrgLoading(true);
+    try {
+      const res = await apiRequest("POST", "/organizations", { name: newOrgName, slug: newOrgSlug });
+      const newOrg: SidebarOrg = res.organization || { id: res.id, name: newOrgName };
+      setOrganizations((prev) => [...prev, newOrg]);
+      setActiveOrg(newOrg);
+      localStorage.setItem("kyte-active-org", newOrg.id);
+      setShowCreateOrg(false);
+      setNewOrgName("");
+      setNewOrgSlug("");
+      window.location.href = '/dashboard';
+    } catch (cause) {
+      const requestError = cause as RequestError;
+      console.error(cause);
+      setCreateOrgError(requestError.message || "Could not create organization.");
+    } finally {
+      setCreateOrgLoading(false);
+    }
+  };
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={navMainWithActive} />
-        <NavProjects projects={data.projects} />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser />
-      </SidebarFooter>
-    </Sidebar>
+    <>
+      <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border bg-sidebar" {...props}>
+        <SidebarHeader className="border-b border-sidebar-border p-3 bg-sidebar">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={
+                  <SidebarMenuButton
+                    size="lg"
+                    data-slot="team-switcher"
+                    className="w-full justify-between hover:bg-sidebar-accent hover:text-sidebar-foreground text-sidebar-foreground border border-dashed border-border bg-background/30 shadow-sm"
+                  />
+                }>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/50 bg-sidebar-accent/50 text-sidebar-foreground">
+                        <Command className="size-4" />
+                      </div>
+                      <span className="font-semibold text-sm truncate">{activeOrg ? activeOrg.name : 'No Organization'}</span>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56 bg-popover border-border text-popover-foreground">
+                  {organizations.map(org => (
+                    <DropdownMenuItem
+                      key={org.id}
+                      className="flex items-center gap-2 hover:bg-accent focus:bg-accent cursor-pointer"
+                      onClick={() => {
+                        setActiveOrg(org);
+                        localStorage.setItem("kyte-active-org", org.id);
+                        window.location.href = '/dashboard';
+                      }}
+                    >
+                      <Building2 className="size-4 text-muted-foreground" />
+                      <span className="truncate">{org.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                  {organizations.length > 0 && <DropdownMenuSeparator className="bg-border" />}
+                  <DropdownMenuItem
+                    className="hover:bg-accent focus:bg-accent cursor-pointer text-muted-foreground"
+                    onClick={() => setShowCreateOrg(true)}
+                  >
+                    <PlusIcon className="w-4 h-4 mr-2" /> Create Organization
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent className="bg-sidebar px-2 py-3">
+          <SidebarGroup className="px-0 py-0 mb-4">
+            <Button className="w-full bg-white text-black hover:bg-zinc-200 h-9 rounded-md" render={<Link href="/new" />}>
+              <PlusIcon className="w-4 h-4 mr-2" /> Create Project
+            </Button>
+          </SidebarGroup>
+
+          <SidebarGroup className="px-0 py-0">
+            <SidebarGroupLabel className="mb-1 px-2.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Navigation</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === '/dashboard'}
+                  tooltip="Overview"
+                  className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                  render={<Link href="/dashboard" />}
+                >
+                  <LayoutDashboard />
+                  <span>Overview</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === '/dashboard/deployments'}
+                  tooltip="Deployments"
+                  className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                  render={<Link href="/dashboard/deployments" />}
+                >
+                  <Rocket />
+                  <span>Deployments</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+          <SidebarGroup className="mt-5 px-0 py-0 flex-1 min-h-0 flex flex-col">
+            <SidebarGroupLabel className="mb-1 px-2.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase flex items-center justify-between shrink-0">
+              Recent projects
+            </SidebarGroupLabel>
+            <div className="px-2 mb-3 relative shrink-0">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
+              <Input 
+                placeholder="Search projects..." 
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                className="h-8 text-xs bg-sidebar-accent/50 border border-border/50 pl-8 focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 pb-4">
+              <SidebarMenu>
+                {projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase())).map((project) => {
+                const isActive = pathname.includes(`/projects/${project.id}`);
+                return (
+                  <SidebarMenuItem key={project.id} className="w-full">
+                    <SidebarMenuButton
+                      tooltip={project.name}
+                      className={`h-9 w-full rounded-md px-2.5 text-[13px] font-medium transition-colors group/button ${
+                        isActive
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                      }`}
+                      render={<Link href={`/projects/${project.id}`} />}
+                    >
+                      <AppWindow className={isActive ? 'text-indigo-400 size-4 mr-2 shrink-0' : 'text-muted-foreground size-4 mr-2 shrink-0'} />
+                      <span className="flex-1 truncate">{project.name}</span>
+                    </SidebarMenuButton>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={
+                        <SidebarMenuAction className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent mr-1" />
+                      }>
+                        <MoreHorizontal className="size-3.5" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-48 bg-popover border-border text-popover-foreground" side="right" align="start">
+                        <DropdownMenuItem className="hover:bg-accent focus:bg-accent cursor-pointer text-[13px]">
+                          <ExternalLink className="size-3.5 mr-2" />
+                          Visit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-border" />
+                        <DropdownMenuItem className="hover:bg-destructive/10 focus:bg-destructive/10 text-destructive cursor-pointer text-[13px]" onClick={() => {
+                          setProjectToDelete(project.id);
+                        }}>
+                          <Trash2 className="size-3.5 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                );
+              })}
+              </SidebarMenu>
+            </div>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter className="border-t border-sidebar-border bg-sidebar p-3">
+          <NavUser />
+        </SidebarFooter>
+      </Sidebar>
+
+      <AlertDialog open={!!projectToDelete} onOpenChange={(open) => !open && setProjectToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete your project and remove all data from our servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (projectToDelete) {
+                  try {
+                    await apiRequest('DELETE', `/projects/${projectToDelete}`);
+                    if (window.location.pathname.includes(`/projects/${projectToDelete}`)) {
+                      window.location.href = '/dashboard';
+                    } else {
+                      window.location.reload();
+                    }
+                  } catch (e) {
+                    toast.error("Failed to delete project");
+                  }
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Create Organization Modal */}
+      {showCreateOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-lg border border-border bg-card p-6 sm:p-8 shadow-xl">
+            <button
+              type="button"
+              onClick={() => { setShowCreateOrg(false); setCreateOrgError(""); }}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+            <div className="mb-6">
+              <h2 className="text-lg font-medium tracking-tight">Create Organization</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Add a new workspace for your team.</p>
+            </div>
+            <form onSubmit={handleCreateOrg} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Organization Name</label>
+                <Input
+                  value={newOrgName}
+                  onChange={(e) => {
+                    setNewOrgName(e.target.value);
+                    setNewOrgSlug(e.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+                  }}
+                  placeholder="Acme Corp"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Organization URL</label>
+                <div className="flex items-center">
+                  <span className="rounded-l-md border border-r-0 border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+                    kyte.com/
+                  </span>
+                  <Input
+                    value={newOrgSlug}
+                    onChange={(e) => setNewOrgSlug(e.target.value)}
+                    className="rounded-l-none"
+                    required
+                  />
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">Use lowercase letters, numbers, and hyphens.</p>
+              </div>
+              {createOrgError && (
+                <div className="rounded-md border border-destructive bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                  <p>{createOrgError}</p>
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="ghost" onClick={() => { setShowCreateOrg(false); setCreateOrgError(""); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createOrgLoading}>
+                  {createOrgLoading ? "Creating..." : "Create"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

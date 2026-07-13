@@ -1,25 +1,39 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClerkProvider } from '@clerk/nextjs'
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+import { ThemeProvider } from "@/components/theme-provider"
+import { dark } from '@clerk/themes'
 
 export const metadata: Metadata = {
   title: 'Kyte — Seamless Frontend Hosting',
   description: 'Deploy your frontend apps seamlessly.',
 }
 
+import { Toaster } from "@/components/ui/sonner";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider>
-      <html lang="en" className="dark" suppressHydrationWarning>
-        <body className={cn("min-h-screen bg-background text-foreground antialiased font-sans", inter.variable)} suppressHydrationWarning>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
+    <ClerkProvider appearance={{ baseTheme: dark } as unknown as object}>
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet" />
+        </head>
+        <body className={cn("min-h-screen bg-background text-foreground antialiased font-sans")} suppressHydrationWarning>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem={false}
+            disableTransitionOnChange
+          >
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+            <Toaster position="bottom-left" />
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

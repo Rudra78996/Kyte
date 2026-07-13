@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { ModeToggle } from "@/components/mode-toggle";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -16,6 +15,9 @@ import React from "react";
 
 export function SiteHeader() {
   const pathname = usePathname();
+
+  // Project details has its own contextual header with deployment actions.
+  if (/^\/projects\/[^/]+/.test(pathname)) return null;
   
   const generateBreadcrumbs = () => {
     const paths = pathname.split('/').filter(Boolean);
@@ -54,9 +56,6 @@ export function SiteHeader() {
         <Breadcrumb>
           {generateBreadcrumbs()}
         </Breadcrumb>
-        <div className="ml-auto flex items-center gap-2">
-          <ModeToggle />
-        </div>
       </div>
     </header>
   );

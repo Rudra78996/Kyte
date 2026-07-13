@@ -28,6 +28,13 @@ export class AuthController {
     return { url };
   }
 
+  @Get('github/repos')
+  @UseGuards(JwtAuthGuard)
+  async githubRepos(@CurrentUser() user: AuthenticatedUser) {
+    const repos = await this.authService.githubRepos(user);
+    return { repos };
+  }
+
   @Get('github/callback')
   async githubCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
     const frontendUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || 'http://localhost';

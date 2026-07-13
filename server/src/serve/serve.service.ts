@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import * as mime from 'mime-types';
+import * as geoip from 'geoip-lite';
 
 @Injectable()
 export class ServeService {
@@ -22,8 +23,10 @@ export class ServeService {
     });
   }
 
-  async serveFile(projectSlug: string, path: string, res: Response) {
+  async serveFile(projectSlug: string, path: string, res: Response, req: Request) {
+    const startTime = performance.now();
     let prefix: string | null = null;
+    let projectId: string | null = null;
 
     const project = await this.prisma.project.findUnique({
       where: { subdomain: projectSlug },
@@ -35,12 +38,14 @@ export class ServeService {
         throw new NotFoundException('Project has no active deployment');
       }
       prefix = project.activeDeploy.s3Prefix;
+      projectId = project.id;
     } else {
       const deployment = await this.prisma.deployment.findUnique({
         where: { id: projectSlug },
       });
       if (deployment) {
         prefix = deployment.s3Prefix;
+        projectId = deployment.projectId;
       }
     }
 
@@ -83,6 +88,46 @@ export class ServeService {
     if (s3Response.CacheControl) {
       res.setHeader('Cache-Control', s3Response.CacheControl);
     }
+
+    res.on('finish', () => {
+      const responseTime = Math.round(performance.now() - startTime);
+      
+      let ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '127.0.0.1';
+      if (ip.includes(',')) ip = ip.split(',')[0].trim();
+      
+      let country = null;
+      let countryCode = null;
+      if (ip) {
+        const geo = geoip.lookup(ip);
+        if (geo) {
+          countryCode = geo.country;
+          const displayNames: Record<string, string> = { US: 'United States', IN: 'India', GB: 'United Kingdom', DE: 'Germany', FR: 'France', CA: 'Canada', AU: 'Australia' };
+          country = displayNames[geo.country] || geo.country;
+        } else if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('172.')) {
+          countryCode = 'US';
+          country = 'United States (Local)';
+        }
+      }
+
+      if (projectId) {
+        const isAsset = targetPath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i);
+        
+        if (!isAsset) {
+          this.prisma.requestLog.create({
+            data: {
+              projectId,
+              method: req.method,
+              path: '/' + targetPath,
+              statusCode: res.statusCode,
+              responseTime,
+              ipAddress: ip,
+              countryCode,
+              country
+            }
+          }).catch(err => console.error("Failed to log request:", err));
+        }
+      }
+    });
 
     (s3Response.Body as NodeJS.ReadableStream).pipe(res);
   }

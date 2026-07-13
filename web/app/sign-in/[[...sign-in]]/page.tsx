@@ -48,7 +48,7 @@ export default function Page() {
           }
         });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setErrorMsg('Invalid email or password. Please try again.');
     } finally {
@@ -112,7 +112,7 @@ export default function Page() {
             </div>
             <h1 className="text-xl font-medium tracking-tight text-neutral-950 dark:text-white">Sign in to <Link href="/">Kyte</Link></h1>
             <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 [&_a]:text-neutral-900 dark:[&_a]:text-neutral-100 [&_a]:underline [&_a]:underline-offset-[5px] [&_a]:decoration-neutral-300 dark:[&_a]:decoration-neutral-700 hover:[&_a]:decoration-blue-500">
-              Don't have an account? <Link href="/sign-up">Signup here</Link>
+              Don&apos;t have an account? <Link href="/sign-up">Signup here</Link>
             </p>
             
             <div className="max-w-xl mx-auto mt-5 text-left">

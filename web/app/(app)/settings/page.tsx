@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useApiRequest } from '@/hooks/use-api';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -8,30 +8,41 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
+interface UserProfile {
+  id: string;
+  email: string;
+  githubConnected: boolean;
+  githubUsername?: string;
+}
+
 function SettingsContent() {
   const apiRequest = useApiRequest();
   const searchParams = useSearchParams();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const data = await apiRequest('GET', '/auth/me');
       setUser(data);
-    } catch (err: any) { console.error(err); }
-    finally { setLoading(false); }
-  };
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadProfile(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadProfile]);
 
   const connectGithub = async () => {
     try {
       const res = await apiRequest('GET', '/auth/github/connect');
       if (res.url) window.location.href = res.url;
-    } catch (err: any) {
-      alert('Failed to initiate GitHub connection: ' + err.message);
+    } catch (err) {
+      alert('Failed to initiate GitHub connection: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -40,15 +51,16 @@ function SettingsContent() {
   const githubStatus = searchParams?.get('github');
 
   return (
-    <div className="max-w-2xl w-full flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your account and integrations.</p>
-      </div>
+    <div className="app-page max-w-3xl flex flex-col gap-6">
+      <header className="border-b border-border pb-8">
+        <p className="section-label">Workspace</p>
+        <h1 className="page-heading mt-2">Settings</h1>
+        <p className="page-subtitle">Manage your account and integrations.</p>
+      </header>
 
       {githubStatus === 'connected' && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm dark:bg-emerald-950/30 dark:border-emerald-900/50 dark:text-emerald-400">
-          ✓ Successfully connected to GitHub! You can now use Auto-Deploy.
+        <div className="rounded-lg border border-border bg-muted px-4 py-4 text-sm text-muted-foreground">
+          GitHub connected. You can now enable automatic deployments.
         </div>
       )}
       {githubStatus === 'error' && (
@@ -62,13 +74,13 @@ function SettingsContent() {
           <CardTitle>Account Details</CardTitle>
           <CardDescription>Your personal information.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-0 p-0">
-          <div className="flex justify-between items-center px-6 py-4">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between px-6 py-4">
             <span className="text-sm text-muted-foreground">Email</span>
             <span className="text-sm font-medium">{user?.email}</span>
           </div>
           <Separator />
-          <div className="flex justify-between items-center px-6 py-4">
+          <div className="flex items-center justify-between px-6 py-4">
             <span className="text-sm text-muted-foreground">User ID</span>
             <span className="font-mono text-xs text-muted-foreground">{user?.id}</span>
           </div>
@@ -86,11 +98,11 @@ function SettingsContent() {
               <div className="text-sm font-medium flex items-center gap-2">
                 GitHub
                 {user?.githubConnected ? (
-                  <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50">
+                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] font-normal text-emerald-400">
                     Connected
                   </Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-[10px]">Not Connected</Badge>
+                  <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30">Not Connected</Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">

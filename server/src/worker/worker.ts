@@ -29,12 +29,13 @@ server.listen(port, '0.0.0.0', () => {
 });
 
 const worker = new Worker('builds', async (job: Job) => {
-  const { deploymentId, repoUrl } = job.data;
-  console.log(`[worker] Processing deploy ${deploymentId} for ${repoUrl}`);
+  const { deploymentId, repoUrl, branch } = job.data;
+  console.log(`[worker] Processing deploy ${deploymentId} for ${repoUrl} (branch: ${branch})`);
 
   const deployment = await prisma.deployment.update({
     where: { id: deploymentId },
-    data: { status: 'BUILDING' }
+    data: { status: 'BUILDING' },
+    include: { project: true }
   });
 
   const buildDir = `/tmp/builds/${deploymentId}`;
@@ -42,7 +43,19 @@ const worker = new Worker('builds', async (job: Job) => {
 
   let logSequence = 0;
   const publishLog = (chunk: string | Buffer, stream: 'STDOUT' | 'STDERR') => {
-    const text = chunk.toString();
+    let text = chunk.toString();
+    
+    if (stream === 'STDERR') {
+      const lines = text.split('\n');
+      const filtered = lines.filter(l => 
+        !l.includes('UID/EUID=0 in the global user namespace') && 
+        !l.includes('GID/EGID=0 in the global user namespace') &&
+        !l.includes('npm notice')
+      );
+      text = filtered.join('\n');
+      if (!text.trim()) return;
+    }
+
     console.log(`[${deploymentId}] [${stream}] ${text.trim()}`);
     redis.publish(`deploy:${deploymentId}`, JSON.stringify({ stream, text }));
     const currentSeq = logSequence++;
@@ -57,7 +70,12 @@ const worker = new Worker('builds', async (job: Job) => {
   };
 
   try {
+    const rootDir = deployment.project.rootDirectory || './';
+    const buildCmd = deployment.project.buildCommand || 'npm run build';
+    const script = `git clone -q -b "$2" --depth 1 "$1" /build/app && cd /build/app/${rootDir} && npm install --ignore-scripts --no-fund --no-audit --loglevel=error && ${buildCmd}`;
+
     const nsjailProcess = execa('nsjail', [
+        '-q', // quiet mode
         '-Mo', // Mount proc/sys and run once
         '--chroot', '', // Let nsjail create an empty chroot internally
         '--disable_proc', // Docker masks /proc, so disable nsjail procfs mount
@@ -80,8 +98,8 @@ const worker = new Worker('builds', async (job: Job) => {
         '--env', 'HOME=/build', // npm needs a writable home
         '--',
         '/bin/sh', '-c',
-        'git clone --depth 1 "$1" /build/app && cd /build/app && npm install --ignore-scripts && npm run build',
-        '--', repoUrl
+        script,
+        '--', repoUrl, branch || 'main'
       ]);
       nsjailProcess.stdout?.on('data', (chunk: any) => publishLog(chunk || '', 'STDOUT'));
       nsjailProcess.stderr?.on('data', (chunk: any) => publishLog(chunk || '', 'STDERR'));
@@ -93,7 +111,9 @@ const worker = new Worker('builds', async (job: Job) => {
       data: { status: 'UPLOADING' }
     });
 
-    const distDir = `${buildDir}/app/dist`;
+    const outDir = deployment.project.outputDirectory || 'dist';
+    // Path resolution handles `./` smoothly
+    const distDir = require('path').join(buildDir, 'app', rootDir, outDir);
     await uploadDirectory(deployment.s3Prefix, distDir, (msg) => publishLog(msg + '\n', 'STDOUT'));
 
     await prisma.deployment.update({
@@ -107,12 +127,32 @@ const worker = new Worker('builds', async (job: Job) => {
       where: { id: deployment.projectId },
       data: { activeDeployId: deploymentId }
     });
+    
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        userId: deployment.project.userId,
+        title: 'Deployment successful',
+        message: `${deployment.project.name} is now live (branch: ${deployment.branch})`,
+        type: 'SUCCESS'
+      }
+    });
 
   } catch (err: any) {
     publishLog(`Build failed: ${err.message}\n`, 'STDERR');
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: { status: 'FAILED' }
+    });
+    
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        userId: deployment.project.userId,
+        title: 'Deployment failed',
+        message: `${deployment.project.name} failed to build (branch: ${deployment.branch})`,
+        type: 'ERROR'
+      }
     });
   } finally {
     await fs.remove(buildDir).catch(() => {});

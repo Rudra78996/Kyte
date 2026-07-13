@@ -43,6 +43,43 @@ export class AuthService {
     };
   }
 
+  async githubRepos(user: AuthenticatedUser) {
+    const account = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        githubConnections: { take: 1 }
+      },
+    });
+
+    const githubConn = account?.githubConnections?.[0];
+    if (!githubConn || !githubConn.accessTokenEncrypted) {
+      throw new BadRequestException('GitHub is not connected');
+    }
+
+    const accessToken = Buffer.from(githubConn.accessTokenEncrypted, 'base64').toString('utf-8');
+
+    const res = await fetch('https://api.github.com/user/repos?visibility=all&per_page=100&sort=updated', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+      }
+    });
+
+    if (!res.ok) {
+      throw new BadRequestException('Failed to fetch repositories from GitHub');
+    }
+
+    const repos = await res.json();
+    return repos.map((repo: any) => ({
+      id: repo.id,
+      name: repo.name,
+      fullName: repo.full_name,
+      private: repo.private,
+      htmlUrl: repo.html_url,
+      updatedAt: repo.updated_at,
+    }));
+  }
+
   async generateGithubState(userId: string): Promise<string> {
     return this.jwtService.signAsync({ sub: userId, purpose: 'github_oauth' }, { expiresIn: '15m' });
   }

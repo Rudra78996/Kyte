@@ -1,57 +1,148 @@
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useApiRequest, useApiToken } from '@/hooks/use-api';
-import { useParams } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, RefreshCw, Terminal, GitBranch } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX } from 'lucide-react';
+import Link from 'next/link';
+import { ProjectAvatar } from '@/components/project-avatar';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
+
+
+interface Project {
+  id: string;
+  name: string;
+  repoUrl: string;
+  preset: string;
+  rootDirectory: string;
+  buildCommand: string;
+  outputDirectory: string;
+  branch: string;
+  subdomain?: string;
+  webhookId?: string;
+}
+
+interface Deployment {
+  id: string;
+  status: string;
+  commitSha: string;
+  deployedAt: string;
+  branch?: string;
+  triggerSource?: string;
+  commitMessage?: string;
+  updatedAt: string;
+}
+
+interface SettingsForm {
+  name: string;
+  branch: string;
+  rootDirectory: string;
+  buildCommand: string;
+  outputDirectory: string;
+}
 
 export default function ProjectPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.id as string;
   const apiRequest = useApiRequest();
   const getClerkToken = useApiToken();
 
-  const [project, setProject] = useState<any>(null);
-  const [deployments, setDeployments] = useState<any[]>([]);
-  const [activeDeploy, setActiveDeploy] = useState<any>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [activeDeploy, setActiveDeploy] = useState<Deployment | null>(null);
+  const [metrics, setMetrics] = useState<any>(null);
   const [logs, setLogs] = useState<{ stream: string; text: string }[]>([]);
+  const [logQuery, setLogQuery] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<string>("Overview");
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [projectId]);
+  const [settingsForm, setSettingsForm] = useState<SettingsForm>({
+    name: '', branch: '', rootDirectory: '', buildCommand: '', outputDirectory: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  const copyLogs = async () => {
+    await navigator.clipboard.writeText(logs.map((log) => log.text).join(''));
+  };
 
-  const loadData = async () => {
+  const downloadLogs = () => {
+    const blob = new Blob([logs.map((log) => log.text).join('')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${project?.name || 'deployment'}-${activeDeploy?.commitSha?.slice(0, 7) || 'logs'}.log`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const loadData = useCallback(async () => {
     try {
       const proj = await apiRequest('GET', `/projects`);
-      const found = proj.projects.find((p: any) => p.id === projectId);
+      const found = proj.projects.find((p: Project) => p.id === projectId);
       setProject(found);
+
+      setSettingsForm((prev: SettingsForm) => ({
+        name: prev.name || found.name || '',
+        branch: prev.branch || found.branch || '',
+        rootDirectory: prev.rootDirectory || found.rootDirectory || '',
+        buildCommand: prev.buildCommand || found.buildCommand || '',
+        outputDirectory: prev.outputDirectory || found.outputDirectory || '',
+      }));
+
       const deps = await apiRequest('GET', `/projects/${projectId}/deployments`);
       setDeployments(deps.deployments || []);
       if (deps.deployments.length > 0) {
-        setActiveDeploy((prev: any) => prev ? prev : deps.deployments[0]);
+        setActiveDeploy((prev: Deployment | null) => prev ? prev : deps.deployments[0]);
       }
+
+      const metricsData = await apiRequest('GET', `/projects/${projectId}/metrics`).catch(() => null);
+      if (metricsData) setMetrics(metricsData);
     } catch (err) { console.error(err); }
-  };
+  }, [apiRequest, projectId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadData(); }, 0);
+    const interval = setInterval(() => { void loadData(); }, 5000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === "Logs") {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, activeTab]);
 
   const triggerDeploy = async () => {
     try {
+      if (!project) return;
       const res = await apiRequest('POST', `/projects/${projectId}/deployments`, {
-        repoUrl: project.repoUrl, branch: 'main', commitSha: 'HEAD',
+        repoUrl: project.repoUrl, branch: project.branch || 'main', commitSha: 'HEAD',
       });
       setActiveDeploy(res);
       setLogs([]);
-      loadData();
-    } catch (err: any) { alert(err.message); }
+      setActiveTab("Logs");
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to trigger deployment');
+    }
   };
 
   const [enablingWebhook, setEnablingWebhook] = useState(false);
@@ -60,13 +151,39 @@ export default function ProjectPage() {
     try {
       const res = await apiRequest('POST', `/projects/${projectId}/webhook/enable`);
       alert(res.message || 'Webhook enabled!');
-      loadData();
-    } catch (err: any) { alert(err.message || 'Failed'); }
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to enable webhook');
+    }
     finally { setEnablingWebhook(false); }
   };
 
+  const saveSettings = async () => {
+    setIsSaving(true);
+    try {
+      await apiRequest('PATCH', `/projects/${projectId}`, settingsForm);
+      alert('Settings saved successfully!');
+      void loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+
+  const deleteProject = async () => {
+    try {
+      await apiRequest('DELETE', `/projects/${projectId}`);
+      router.push('/dashboard');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete project');
+    }
+  };
+
   useEffect(() => {
-    if (!activeDeploy) return;
+    if (!activeDeploy?.id) return;
     let es: EventSource;
     (async () => {
       const token = await getClerkToken();
@@ -77,138 +194,470 @@ export default function ProjectPage() {
         try {
           const data = JSON.parse(event.data);
           setLogs(prev => [...prev, data]);
-          if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) loadData();
-        } catch (e) {}
+          if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) {
+            void loadData();
+          }
+        } catch {}
       };
     })();
     return () => es?.close();
-  }, [activeDeploy?.id]);
+  }, [activeDeploy?.id, getClerkToken, loadData, projectId]);
 
-  if (!project) return <div className="py-24 text-center text-muted-foreground animate-pulse">Loading…</div>;
+  if (!project) return <div className="app-page py-24 text-center text-muted-foreground animate-pulse">Loading project…</div>;
 
-  const statusVariant: Record<string, string> = {
-    SUCCESS:  'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50',
-    FAILED:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/50',
-    BUILDING: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/50',
-    QUEUED:   'bg-neutral-50 text-neutral-700 border-neutral-200 dark:bg-neutral-900 dark:text-neutral-400 dark:border-neutral-800',
+  const tabs = ["Overview", "Observability", "Deployments", "Logs", "Domains", "Settings"];
+
+  const renderStatusBadge = (status: string) => {
+    const label = status === 'SUCCESS' ? 'Ready' : status === 'FAILED' ? 'Failed' : status === 'BUILDING' ? 'Building' : status === 'UPLOADING' ? 'Uploading' : 'Queued';
+    const dotColor = status === 'SUCCESS' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-red-500' : status === 'BUILDING' || status === 'UPLOADING' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-400';
+    const textColor = status === 'SUCCESS' ? 'text-emerald-400' : status === 'FAILED' ? 'text-red-400' : status === 'BUILDING' || status === 'UPLOADING' ? 'text-amber-300' : 'text-zinc-300';
+    const borderColor = status === 'SUCCESS' ? 'border-emerald-500/30' : status === 'FAILED' ? 'border-red-500/30' : status === 'BUILDING' || status === 'UPLOADING' ? 'border-amber-500/30' : 'border-zinc-700';
+    return <Badge variant="outline" className={`gap-2 bg-zinc-900 font-normal ${textColor} ${borderColor}`}><span className={`size-1.5 rounded-full ${dotColor}`} />{label}</Badge>;
   };
 
+  const currentDeployStatus = activeDeploy?.status || 'UNKNOWN';
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 pt-0 w-full">
-      {/* Header & Actions */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-          <a
-            href={`http://${project.subdomain}.localhost`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors mt-1"
-          >
-            {project.subdomain}.localhost <ExternalLink className="w-3 h-3" />
-          </a>
+    <div className="min-h-full w-full bg-background text-foreground">
+      {/* Top Navbar */}
+      <div className="flex h-14 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-md sm:px-6 md:px-8">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <SidebarTrigger className="-ml-1 mr-1" />
+          <span className="h-4 w-px bg-border" />
+          <Link href="/dashboard" className="flex items-center gap-2 hover:text-foreground transition-colors cursor-pointer">
+            <span className="font-medium text-foreground">Projects</span>
+          </Link>
+          <ChevronRight className="w-4 h-4" />
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            {project.name}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {project.webhookId ? (
-            <Badge variant="outline" className="px-3 py-1.5 text-emerald-600 border-emerald-200 bg-emerald-50 dark:text-emerald-400 dark:border-emerald-900/50 dark:bg-emerald-950/20 text-sm font-normal">
-              ✓ Auto-Deploy Active
-            </Badge>
-          ) : (
-            <Button onClick={enableWebhook} disabled={enablingWebhook} variant="outline" className="h-9">
-              {enablingWebhook ? 'Enabling…' : 'Enable Auto-Deploy'}
-            </Button>
-          )}
-          <Button onClick={triggerDeploy} className="h-9 gap-2">
-            <RefreshCw className="w-4 h-4" /> Trigger Deploy
+        <div className="flex items-center gap-2">
+          <Button onClick={triggerDeploy} variant="outline" size="sm">
+            <RefreshCw data-icon="inline-start" /> Redeploy
           </Button>
+          <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
+            <Button size="sm">
+              <ExternalLink data-icon="inline-start" /> Visit
+            </Button>
+          </a>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Terminal logs */}
-        <div className="lg:col-span-2 flex flex-col min-h-0">
-          <Card className="flex flex-col overflow-hidden shadow-sm flex-1 min-h-[600px] max-h-[800px]">
-            <div className="border-b bg-muted/40 py-2.5 px-4 flex justify-between items-center">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Terminal className="w-4 h-4" /> Build Logs
-              </div>
-              <Badge variant="outline" className={`font-mono text-[10px] ${statusVariant[activeDeploy?.status] ?? ''}`}>
-                {activeDeploy?.status || 'UNKNOWN'}
-              </Badge>
-            </div>
-            <div className="flex-1 p-4 font-mono text-xs leading-relaxed bg-[#0a0a0a] text-neutral-300 overflow-y-auto">
-              {logs.length === 0 && <div className="text-neutral-500 italic">Waiting for logs…</div>}
-              {logs.map((log, i) => (
-                <div key={i} className={`break-words mb-1 ${log.stream === 'STDERR' ? 'text-red-400' : 'text-neutral-300'}`}>
-                  {log.text}
+      <div className="app-page flex min-h-0 flex-1 flex-col gap-7 pb-12 pt-7">
+        <section className="flex flex-col gap-5 border-b border-border pb-6">
+          <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="p-1 rounded-lg border border-border/60 shrink-0 bg-card shadow-sm">
+                  <ProjectAvatar projectId={project.id} size={48} className="rounded-md" />
                 </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-            
-            <div className="p-3 border-t flex justify-between items-center bg-muted/20">
-              <span className="text-xs text-muted-foreground">
-                Deployed {activeDeploy?.deployedAt ? new Date(activeDeploy.deployedAt).toLocaleString() : 'N/A'} via {activeDeploy?.triggerSource}
-              </span>
-              <a href={`http://${activeDeploy?.id}.localhost`} target="_blank" rel="noreferrer">
-                <Button variant="outline" size="sm" className="gap-2 text-xs h-7">
-                  Preview URL <ExternalLink className="w-3 h-3" />
-                </Button>
-              </a>
-            </div>
-          </Card>
+                <h1 className="text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">{project.name}</h1>
+                {renderStatusBadge(deployments[0]?.status || 'QUEUED')}
+                <Badge variant="outline" className="font-mono font-normal">{project.preset || 'Other'}</Badge>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                  <Globe className="size-3.5" />
+                  {project.subdomain}.localhost <ExternalLink className="size-3" />
+                </a>
+                <div className="flex items-center gap-2">
+                  <GitBranch className="size-3.5" /> {project.branch || 'main'}
+                </div>
+                {activeDeploy && (
+                  <div className="flex items-center gap-2 font-mono">
+                    <GitCommitHorizontal className="size-3.5" />{activeDeploy.commitSha?.slice(0, 7)}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Clock className="size-3.5" /> {deployments.length > 0 ? `Deployed ${new Date(deployments[0].deployedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Not deployed'}
+                </div>
+              </div>
+          </div>
+        </section>
+
+        {/* Tabs */}
+        <div className="-mb-px flex w-full shrink-0 items-center gap-5 overflow-x-auto border-b border-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`relative flex items-center gap-2 whitespace-nowrap pb-4 text-sm font-medium transition-colors ${
+                activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab}
+              {activeTab === tab && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-primary" />
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Right: History List */}
-        <div className="lg:col-span-1 min-h-0 flex flex-col">
-          <Card className="flex flex-col overflow-hidden shadow-sm flex-1 min-h-[600px] max-h-[800px]">
-            <CardHeader className="py-4 border-b bg-muted/20 shrink-0">
-              <CardTitle className="text-sm font-medium flex items-center justify-between">
-                Deployment History
-                <Badge variant="secondary" className="rounded-full text-xs font-normal">
-                  {deployments.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {deployments.map(d => (
-                <button
-                  key={d.id}
-                  onClick={() => { setActiveDeploy(d); setLogs([]); }}
-                  className={`w-full text-left p-3 rounded-lg transition-all flex flex-col gap-2 border ${
-                    activeDeploy?.id === d.id 
-                      ? 'bg-primary/5 border-primary/20 ring-1 ring-primary/10 shadow-sm' 
-                      : 'border-transparent hover:bg-muted/50 hover:border-border'
-                  }`}
-                >
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center gap-2">
-                      <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="font-mono text-sm font-bold">{d.commitSha.slice(0, 7)}</span>
+        {/* Tab Content Wrapper */}
+        <div className="mt-4 flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+          {activeTab === "Overview" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-8">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-sm font-medium">Latest deployment</h2><p className="mt-1 text-xs text-muted-foreground">Current production build and source.</p></div>{renderStatusBadge(currentDeployStatus)}</div>
+                <div className="grid gap-6 p-5 sm:grid-cols-2"><div><p className="section-label">Source commit</p><p className="mt-2 flex items-center gap-2 font-mono text-sm"><GitCommitHorizontal className="size-3.5 text-zinc-400" />{activeDeploy?.commitSha?.slice(0, 7) || 'No commit'}</p><p className="mt-1 text-xs text-muted-foreground">{activeDeploy?.commitMessage || 'No commit message available'}</p></div><div><p className="section-label">Build details</p><p className="mt-2 text-sm text-zinc-300">{project.buildCommand || 'npm run build'}</p><p className="mt-1 text-xs text-muted-foreground">Output: {project.outputDirectory || 'dist'} · Runtime: Node.js</p></div></div>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-4"><div className="border-b border-border px-5 py-4"><h2 className="text-sm font-medium">Deployment information</h2></div><div className="flex flex-col gap-4 p-5 text-sm"><div className="flex justify-between gap-4"><span className="text-muted-foreground">Framework</span><span>{project.preset || 'Other'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Branch</span><span className="font-mono text-xs">{project.branch || 'main'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Source</span><span>{activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Region</span><span>Default</span></div></div></div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-12">
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300"><Activity className="size-4" /></div>
+                    <div>
+                      <p className="text-sm font-medium">Production activity</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{metrics?.pageviews?.toLocaleString() || 0} pageviews · {metrics?.avgResponse || 0}ms average response · {metrics?.health || 100}% build success</p>
                     </div>
-                    <Badge variant="outline" className={`text-[10px] uppercase ${statusVariant[d.status] ?? ''}`}>
-                      {d.status}
-                    </Badge>
                   </div>
-                  <div className="flex justify-between items-center w-full">
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(d.deployedAt).toLocaleDateString(undefined, { 
-                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
-                      })}
-                    </span>
-                    {d.triggerSource === 'WEBHOOK' && (
-                      <span className="text-[10px] bg-secondary/80 px-1.5 py-0.5 rounded-sm text-secondary-foreground font-medium">Auto</span>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('Observability')}>View observability<ChevronRight data-icon="inline-end" /></Button>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === "Observability" && (
+            <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold tracking-[-0.02em]">Observability</h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">A simple view of how your project is performing in production.</p>
+                </div>
+                <span className="font-mono text-[11px] text-zinc-500">Last 7 days · Updated just now</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Pageviews</span><Activity className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.pageviews?.toLocaleString() || 0}</p>
+                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Unique visitors</span><Users className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.visitors?.toLocaleString() || 0}</p>
+                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Avg. response</span><Gauge className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.avgResponse || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">ms</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Fast for your visitors</p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <div className="flex items-center justify-between"><span className="section-label">Avg. build</span><Timer className="size-3.5 text-zinc-500" /></div>
+                  <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.avgBuild || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">s</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Across recent deployments</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+                <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-8">
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                    <div><h3 className="text-sm font-medium">Traffic</h3><p className="mt-1 text-xs text-muted-foreground">Pageviews and visitors over the past seven days.</p></div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-200" />Pageviews</span><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-600" />Visitors</span></div>
+                  </div>
+                  <div className="h-[280px] px-2 pb-3 pt-5">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={metrics?.trafficData || []} margin={{ top: 5, right: 12, left: -16, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="pageviews" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#e4e4e7" stopOpacity={0.18} /><stop offset="100%" stopColor="#e4e4e7" stopOpacity={0} /></linearGradient>
+                          <linearGradient id="visitors" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#71717a" stopOpacity={0.18} /><stop offset="100%" stopColor="#71717a" stopOpacity={0} /></linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
+                        <XAxis axisLine={false} dataKey="day" tick={{ fill: '#71717a', fontSize: 11 }} tickLine={false} />
+                        <YAxis axisLine={false} tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} tickLine={false} />
+                        <Tooltip contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 }} cursor={{ stroke: '#52525b' }} labelStyle={{ color: '#a1a1aa' }} />
+                        <Area dataKey="pageviews" fill="url(#pageviews)" stroke="#e4e4e7" strokeWidth={2} type="monotone" />
+                        <Area dataKey="visitors" fill="url(#visitors)" stroke="#71717a" strokeWidth={2} type="monotone" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-4">
+                  <div className="flex items-center gap-2 border-b border-border px-5 py-4"><MapPinned className="size-3.5 text-zinc-500" /><div><h3 className="text-sm font-medium">Traffic location</h3><p className="mt-1 text-xs text-muted-foreground">Where your visitors are coming from.</p></div></div>
+                  <div className="divide-y divide-border px-5 py-1">
+                    {metrics?.locations?.length > 0 ? metrics.locations.map((location: any) => (
+                      <div key={location.country} className="py-3">
+                        <div className="flex items-center justify-between text-xs"><span className="flex items-center gap-2 text-zinc-300"><span className="flex size-5 items-center justify-center rounded bg-zinc-900 font-mono text-[9px] text-zinc-500">{location.code}</span>{location.country}</span><span className="font-mono text-zinc-500">{location.share}%</span></div>
+                        <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-900"><div className="h-full rounded-full bg-zinc-500" style={{ width: `${location.share}%` }} /></div>
+                      </div>
+                    )) : (
+                      <div className="py-8 text-center text-sm text-muted-foreground">No location data available yet.</div>
                     )}
                   </div>
-                </button>
-              ))}
-              {deployments.length === 0 && (
-                <div className="text-center py-10 text-muted-foreground text-sm">
-                  No deployments found.
-                </div>
-              )}
+                </section>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <section className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Response time</h3><p className="mt-1 text-xs text-muted-foreground">Average time for your site to respond to visitors.</p></div>
+                  <div className="flex items-end justify-between gap-6 p-5"><div><p className="text-3xl font-semibold tracking-[-0.04em]">{metrics?.avgResponse || 0}<span className="ml-1 text-base font-medium text-muted-foreground">ms</span></p><p className="mt-1 text-xs text-muted-foreground">Live real-time average</p></div><div className="flex h-12 items-end gap-1" aria-label="Response time trend"><span className="h-5 w-2 rounded-sm bg-zinc-700" /><span className="h-8 w-2 rounded-sm bg-zinc-600" /><span className="h-6 w-2 rounded-sm bg-zinc-700" /><span className="h-10 w-2 rounded-sm bg-zinc-500" /><span className="h-7 w-2 rounded-sm bg-zinc-600" /><span className="h-9 w-2 rounded-sm bg-zinc-500" /><span className="h-11 w-2 rounded-sm bg-zinc-400" /></div></div>
+                </section>
+                <section className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Deployment health</h3><p className="mt-1 text-xs text-muted-foreground">Success rate across your last 20 deployments.</p></div>
+                  <div className="flex items-center justify-between gap-6 p-5"><div><p className="text-3xl font-semibold tracking-[-0.04em]">{metrics?.health || 100}<span className="ml-1 text-base font-medium text-muted-foreground">%</span></p><p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><CircleCheck className="size-3.5 text-emerald-400" />{metrics?.successfulDeployments || 0} successful · <CircleX className="size-3.5 text-red-400" />{metrics?.failedDeployments || 0} failed</p></div><div className="flex size-16 items-center justify-center rounded-full border-4 border-emerald-500/80 border-l-zinc-800 border-b-zinc-800 text-[11px] font-medium text-zinc-300">{metrics?.successfulDeployments || 0}/{metrics?.totalDeployments || 0}</div></div>
+                </section>
+              </div>
             </div>
-          </Card>
+          )}
+          {activeTab === "Deployments" && (
+            <div className="app-scroll grid w-full grid-cols-1 items-start gap-5 overflow-y-auto pb-8 lg:grid-cols-12">
+              <div className="flex flex-col gap-3 lg:col-span-8">
+                <div className="flex items-center justify-between">
+                  <div><h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">Deployments</h2><p className="mt-1 text-xs text-muted-foreground">Select a deployment to inspect its build output.</p></div>
+                  <span className="font-mono text-[11px] text-zinc-500">{deployments.length} total</span>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  {deployments.map((d, index) => {
+                    const isCurrent = index === 0 && d.status === 'SUCCESS';
+                    const isActiveView = activeDeploy?.id === d.id;
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => { setActiveDeploy(d); setLogs([]); }}
+                        className={`group flex items-center justify-between border-b border-border px-4 py-3.5 transition-colors last:border-b-0 cursor-pointer ${
+                          isActiveView
+                            ? 'bg-zinc-900/80'
+                            : 'hover:bg-zinc-900/50'
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className={`size-2 shrink-0 rounded-full ${d.status === 'SUCCESS' ? 'bg-emerald-400' : d.status === 'FAILED' ? 'bg-red-400' : 'bg-zinc-500'}`} />
+                          <div className="min-w-0 flex flex-col gap-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-sm font-medium text-foreground">
+                                {d.commitSha.slice(0, 7)}
+                              </span>
+                              {isCurrent && (
+                                <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium tracking-wider text-emerald-400">
+                                  PRODUCTION
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <GitBranch className="size-3" /> {d.branch || 'main'}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="size-3" />
+                                {new Date(d.deployedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4 flex shrink-0 items-center gap-3">
+                          {renderStatusBadge(d.status)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {deployments.length === 0 && (
+                    <div className="p-12 text-center text-sm text-muted-foreground">
+                      No deployments found. Trigger a deploy to see history here.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 lg:col-span-4">
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border bg-zinc-900/30 px-4 py-3">
+                    <h3 className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Current deployment</h3>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Status</span>
+                      {renderStatusBadge(currentDeployStatus)}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Runtime</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight">Node.js 22.x</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Build Time</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight">~45s</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="border-b border-border bg-zinc-900/30 px-4 py-3">
+                    <h3 className="text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Build configuration</h3>
+                  </div>
+                  <div className="p-4 flex flex-col gap-4 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Framework</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight bg-muted px-2 py-0.5 rounded border border-border">{project.preset || 'Next.js'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Command</span>
+                      <span className="text-foreground font-mono text-[11px] tracking-tight bg-muted px-2 py-0.5 rounded border border-border">{project.buildCommand || 'npm run build'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "Logs" && (
+            <div className="flex h-[calc(100vh-340px)] min-h-[400px] w-full flex-col overflow-hidden rounded-lg border border-border bg-card">
+              <div className="flex shrink-0 flex-col gap-4 border-b border-border bg-zinc-900/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <FileText className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Build logs</span>
+                  <span className="font-mono text-xs text-muted-foreground">{activeDeploy?.commitSha?.slice(0,7) || 'No deployment selected'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input value={logQuery} onChange={(event) => setLogQuery(event.target.value)} placeholder="Find in logs" className="h-7 w-40 rounded-md border border-zinc-700 bg-zinc-950 pl-7 pr-2 text-xs outline-none placeholder:text-zinc-500 focus:border-zinc-500" />
+                  </div>
+                  <Button variant="ghost" size="icon-xs" title="Copy logs" onClick={() => void copyLogs()}><Copy /></Button>
+                  <Button variant="ghost" size="icon-xs" title="Download logs" onClick={downloadLogs}><Download /></Button>
+                  {renderStatusBadge(activeDeploy?.status || '')}
+                </div>
+              </div>
+
+              <div className="app-scroll min-h-0 flex-1 overflow-y-auto bg-zinc-950 py-3 font-mono text-xs leading-5 text-zinc-300">
+                {logs.length === 0 && <div className="flex h-full min-h-80 items-center justify-center gap-2 text-zinc-500 animate-pulse"><RefreshCw className="size-3.5 animate-spin" />Waiting for build output</div>}
+                {logs.filter((log) => log.text.toLowerCase().includes(logQuery.toLowerCase())).map((log, i) => (
+                  <div key={i} className="grid grid-cols-[78px_minmax(0,1fr)] px-4 py-1 hover:bg-zinc-900/70">
+                    <span className="select-none text-zinc-600">{String(i + 1).padStart(4, '0')}</span>
+                    <span className={`break-words whitespace-pre-wrap ${
+                      log.stream === 'STDERR' || log.text.toLowerCase().includes('error') || log.text.toLowerCase().includes('failed')
+                        ? 'text-red-400'
+                        : 'text-zinc-400'
+                    }`}>{log.text}</span>
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+
+              <div className="flex shrink-0 items-center justify-between border-t border-border bg-zinc-900/50 px-4 py-2">
+                <span className="text-xs text-muted-foreground">Streaming · {activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual deployment'}</span>
+                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
+                  <Button variant="ghost" size="sm">
+                    Visit deployment <ExternalLink data-icon="inline-end" />
+                  </Button>
+                </a>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "Settings" && (
+            <div className="app-scroll flex w-full flex-col gap-8 overflow-y-auto pb-12">
+              <div className="flex flex-col items-start gap-8 md:flex-row">
+                <div className="flex w-full flex-col gap-2 md:w-1/3">
+                  <p className="section-label">Project</p><h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground">General settings</h2>
+                  <p className="text-sm text-muted-foreground">Update your project&apos;s general settings and repository connections.</p>
+                </div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
+                  <div className="flex flex-col gap-5 p-5">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Project Name</label>
+                      <input
+                        type="text"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                        value={settingsForm.name || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Production Branch</label>
+                      <input
+                        type="text"
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                        value={settingsForm.branch || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, branch: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">Root Directory</label>
+                      <input
+                        type="text"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:ring-1 focus:ring-ring"
+                        value={settingsForm.rootDirectory || ''}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, rootDirectory: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-5 py-3">
+                    <Button onClick={saveSettings} disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
+                <div className="w-full md:w-1/3"><p className="section-label">Build</p><h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Build settings</h2><p className="mt-1 text-sm text-muted-foreground">Set the command and output used for production deployments.</p></div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
+                  <div className="flex flex-col gap-6 p-6">
+                    <div className="flex flex-col gap-2"><label className="text-sm font-medium">Build Command</label><input type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring" value={settingsForm.buildCommand || ''} onChange={(e) => setSettingsForm({ ...settingsForm, buildCommand: e.target.value })} /></div>
+                    <div className="flex flex-col gap-2"><label className="text-sm font-medium">Output Directory</label><input type="text" className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring" value={settingsForm.outputDirectory || ''} onChange={(e) => setSettingsForm({ ...settingsForm, outputDirectory: e.target.value })} /></div>
+                  </div>
+                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-6 py-4"><Button onClick={saveSettings} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save build settings'}</Button></div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
+                <div className="w-full md:w-1/3"><p className="section-label">Source control</p><h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Git integration</h2><p className="mt-1 text-sm text-muted-foreground">Connect pushes on your production branch to automatic deployments.</p></div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3"><div className="flex flex-col gap-4 p-6"><div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">GitHub webhook</p><p className="mt-1 text-xs text-muted-foreground">{project.webhookId ? 'Auto-deploy is enabled for this project.' : 'Deploy automatically when a commit reaches the production branch.'}</p></div><Button variant="outline" size="sm" onClick={enableWebhook} disabled={enablingWebhook}>{enablingWebhook ? 'Connecting…' : project.webhookId ? 'Enabled' : 'Enable'}</Button></div><div className="flex items-center justify-between gap-4 border-t border-border pt-4 text-sm"><span className="text-muted-foreground">Repository</span><span className="truncate font-mono text-xs text-zinc-300">{project.repoUrl}</span></div></div></div>
+              </div>
+
+              <div className="mt-8 flex flex-col items-start gap-8 md:flex-row">
+                <div className="flex w-full flex-col gap-2 md:w-1/3">
+                  <p className="section-label text-destructive/80">Danger zone</p><h2 className="text-lg font-semibold text-destructive">Delete project</h2>
+                  <p className="text-sm text-muted-foreground">Irreversible and destructive actions.</p>
+                </div>
+                <div className="w-full md:w-2/3 border border-destructive/30 rounded-lg bg-destructive/5 overflow-hidden">
+                  <div className="p-6 flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex flex-col gap-1">
+                        <h4 className="text-sm font-bold text-foreground">Delete Project</h4>
+                        <p className="text-xs text-muted-foreground">Permanently remove this project and all its deployments.</p>
+                      </div>
+                      <Button onClick={() => setShowDeleteAlert(true)} variant="destructive" className="shrink-0 font-medium">
+                        Delete Project
+                      </Button>
+                      
+                      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete the project <strong className="text-foreground">{project?.name}</strong> and remove all associated deployments and data from our servers.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={deleteProject} 
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete Project
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "Domains" && (
+            <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
+              <div><h2 className="text-lg font-semibold tracking-[-0.02em]">Domains</h2><p className="mt-1 text-sm text-muted-foreground">Manage where people can reach this project.</p></div>
+              <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="text-sm font-medium">Production domain</h3><p className="mt-1 text-xs text-muted-foreground">The default URL for your live deployment.</p></div><Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Active</Badge></div>
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.localhost</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
+              </div>
+              <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20 px-5 py-4"><p className="text-sm font-medium">Custom domains</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Connect a custom domain when you&apos;re ready. DNS verification and SSL will be handled here.</p></div>
+            </div>
+          )}
         </div>
       </div>
     </div>

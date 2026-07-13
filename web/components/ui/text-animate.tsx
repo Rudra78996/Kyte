@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, MotionProps, Variants } from "motion/react";
-import { ElementType, memo } from "react";
+import React, { ElementType, memo } from "react";
 
 type AnimationType = "text" | "word" | "character" | "line";
 type AnimationVariant =
@@ -297,6 +297,18 @@ const defaultItemAnimationVariants: Record<
   },
 };
 
+const motionElementsCache: Record<string, ReturnType<typeof motion.create>> = {};
+
+function getMotionComponent(Component: ElementType) {
+  if (typeof Component === "string") {
+    if (!motionElementsCache[Component]) {
+      motionElementsCache[Component] = motion.create(Component);
+    }
+    return motionElementsCache[Component];
+  }
+  return motion.create(Component as Parameters<typeof motion.create>[0]);
+}
+
 const TextAnimateBase = ({
   children,
   delay = 0,
@@ -311,8 +323,6 @@ const TextAnimateBase = ({
   animation = "fadeIn",
   ...props
 }: TextAnimateProps) => {
-  const MotionComponent = motion.create(Component);
-
   let segments: string[] = [];
   switch (by) {
     case "word":
@@ -377,17 +387,19 @@ const TextAnimateBase = ({
 
   return (
     <AnimatePresence mode="popLayout">
-      <MotionComponent
-        variants={finalVariants.container as Variants}
-        initial="hidden"
-        whileInView={startOnView ? "show" : undefined}
-        animate={startOnView ? undefined : "show"}
-        exit="exit"
-        className={cn("whitespace-pre-wrap", className)}
-        viewport={{ once }}
-        {...props}
-      >
-        {segments.map((segment, i) => (
+      {React.createElement(
+        getMotionComponent(Component),
+        {
+          variants: finalVariants.container as Variants,
+          initial: "hidden",
+          whileInView: startOnView ? "show" : undefined,
+          animate: startOnView ? undefined : "show",
+          exit: "exit",
+          className: cn("whitespace-pre-wrap", className),
+          viewport: { once },
+          ...props,
+        } as any,
+        segments.map((segment, i) => (
           <motion.span
             key={`${by}-${segment}-${i}`}
             variants={finalVariants.item}
@@ -400,8 +412,8 @@ const TextAnimateBase = ({
           >
             {segment}
           </motion.span>
-        ))}
-      </MotionComponent>
+        ))
+      )}
     </AnimatePresence>
   );
 };
