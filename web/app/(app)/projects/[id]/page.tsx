@@ -89,6 +89,8 @@ export default function ProjectPage() {
     name: '', branch: '', rootDirectory: '', buildCommand: '', outputDirectory: ''
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [envVars, setEnvVars] = useState<{key: string, value: string}[]>([]);
+  const [isSavingEnv, setIsSavingEnv] = useState(false);
 
   const copyLogs = async () => {
     await navigator.clipboard.writeText(logs.map((log) => log.text).join(''));
@@ -126,6 +128,11 @@ export default function ProjectPage() {
 
       const metricsData = await apiRequest('GET', `/projects/${projectId}/metrics`).catch(() => null);
       if (metricsData) setMetrics(metricsData);
+      
+      const envData = await apiRequest('GET', `/projects/${projectId}/env`).catch(() => []);
+      if (Array.isArray(envData)) {
+        setEnvVars(envData.length ? envData : [{ key: "", value: "" }]);
+      }
     } catch (err) { console.error(err); }
   }, [apiRequest, projectId]);
 
@@ -183,6 +190,17 @@ export default function ProjectPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const saveEnvVars = async () => {
+    setIsSavingEnv(true);
+    try {
+      await apiRequest('POST', `/projects/${projectId}/env`, { variables: envVars.filter(e => e.key.trim() && e.value.trim()) });
+      alert('Environment variables saved successfully!');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save environment variables');
+    }
+    finally { setIsSavingEnv(false); }
   };
 
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
@@ -600,6 +618,71 @@ export default function ProjectPage() {
                   <div className="flex justify-end border-t border-border bg-zinc-900/30 px-5 py-3">
                     <Button onClick={saveSettings} disabled={isSaving}>
                       {isSaving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
+                <div className="w-full md:w-1/3">
+                  <p className="section-label">Environment</p>
+                  <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Environment Variables</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Manage environment variables for your project. These are securely injected during the build step.</p>
+                </div>
+                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
+                  <div className="flex flex-col gap-4 p-6">
+                    {envVars.map((env, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Key (e.g. API_KEY)" 
+                          value={env.key} 
+                          onChange={(e) => {
+                            const newVars = [...envVars];
+                            newVars[index].key = e.target.value;
+                            setEnvVars(newVars);
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <input 
+                          type="password" 
+                          placeholder="Value" 
+                          value={env.value} 
+                          onChange={(e) => {
+                            const newVars = [...envVars];
+                            newVars[index].value = e.target.value;
+                            setEnvVars(newVars);
+                          }}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => {
+                            if (envVars.length > 1) {
+                              setEnvVars(envVars.filter((_, i) => i !== index));
+                            } else {
+                              setEnvVars([{ key: "", value: "" }]);
+                            }
+                          }}
+                          className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0"
+                        >
+                          <CircleX className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setEnvVars([...envVars, { key: "", value: "" }])}
+                      className="w-full mt-2 border-dashed border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                    >
+                      Add Variable
+                    </Button>
+                  </div>
+                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-6 py-4">
+                    <Button onClick={saveEnvVars} disabled={isSavingEnv}>
+                      {isSavingEnv ? 'Saving...' : 'Save variables'}
                     </Button>
                   </div>
                 </div>

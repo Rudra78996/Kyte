@@ -5,6 +5,7 @@ import * as fs from 'fs-extra';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 import { uploadDirectory } from './minio';
+import { decrypt } from '../utils/crypto.util';
 
 const port = Number(process.env.WORKER_PORT ?? 3001);
 
@@ -72,7 +73,18 @@ const worker = new Worker('builds', async (job: Job) => {
   try {
     const rootDir = deployment.project.rootDirectory || './';
     const buildCmd = deployment.project.buildCommand || 'npm run build';
-    const script = `git clone -q -b "$2" --depth 1 "$1" /build/app && cd /build/app/${rootDir} && npm install --ignore-scripts --no-fund --no-audit --loglevel=error && ${buildCmd}`;
+    
+    const envVars = await prisma.environmentVariable.findMany({
+      where: { projectId: deployment.projectId }
+    });
+    
+    let envString = '';
+    for (const v of envVars) {
+      envString += `${v.key}=${decrypt(v.encryptedValue, v.iv)}\n`;
+    }
+    await fs.writeFile(require('path').join(buildDir, '.env'), envString);
+
+    const script = `git clone -q -b "$2" --depth 1 "$1" /build/app && cp /build/.env /build/app/${rootDir}/.env && cd /build/app/${rootDir} && npm install --ignore-scripts --no-fund --no-audit --loglevel=error && ${buildCmd}`;
 
     const nsjailProcess = execa('nsjail', [
         '-q', // quiet mode

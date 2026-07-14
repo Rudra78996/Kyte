@@ -4,6 +4,7 @@ import {
   CreateProjectDto,
   UpdateProjectDto,
 } from './dto/project.dto';
+import { encrypt, decrypt } from '../utils/crypto.util';
 
 @Injectable()
 export class ProjectsService {
@@ -23,6 +24,16 @@ export class ProjectsService {
         subdomain: this.generateSubdomain(),
         userId,
         organizationId: dto.organizationId,
+        environmentVariables: {
+          create: dto.environmentVariables?.map(v => {
+            const encrypted = encrypt(v.value);
+            return {
+              key: v.key,
+              encryptedValue: encrypted.encryptedValue,
+              iv: encrypted.iv,
+            };
+          }) || [],
+        },
       },
     });
   }
@@ -323,6 +334,75 @@ export class ProjectsService {
       locations: locationsList
     };
   }
+
+  async getEnvironmentVariables(userId: string, projectId: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      include: { environmentVariables: true },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    return project.environmentVariables.map(env => ({
+      key: env.key,
+      value: decrypt(env.encryptedValue, env.iv),
+    }));
+  }
+
+  async upsertEnvironmentVariables(userId: string, projectId: string, variables: { key: string; value: string }[]) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const result = await this.prisma.$transaction(
+      variables.map(v => {
+        const encrypted = encrypt(v.value);
+        return this.prisma.environmentVariable.upsert({
+          where: {
+            projectId_key: { projectId, key: v.key }
+          },
+          update: {
+            encryptedValue: encrypted.encryptedValue,
+            iv: encrypted.iv,
+          },
+          create: {
+            projectId,
+            key: v.key,
+            encryptedValue: encrypted.encryptedValue,
+            iv: encrypted.iv,
+          }
+        });
+      })
+    );
+
+    return { success: true, count: result.length };
+  }
+
+  async deleteEnvironmentVariable(userId: string, projectId: string, key: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    try {
+      await this.prisma.environmentVariable.delete({
+        where: {
+          projectId_key: { projectId, key }
+        }
+      });
+      return { success: true };
+    } catch (e) {
+      throw new NotFoundException('Environment variable not found');
+    }
+  }
+
+
 
 
   private generateSubdomain(): string {

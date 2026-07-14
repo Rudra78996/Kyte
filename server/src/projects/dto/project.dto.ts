@@ -8,6 +8,7 @@ export class CreateProjectDto {
   outputDirectory?: string;
   branch?: string;
   organizationId?: string;
+  environmentVariables?: { key: string; value: string }[];
 }
 
 export class UpdateProjectDto {

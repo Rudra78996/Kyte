@@ -60,6 +60,7 @@ model Project {
   activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
   deployments      Deployment[]       @relation("ProjectDeployments")
   requestLogs      RequestLog[]       @relation("ProjectRequestLogs")
+  environmentVariables EnvironmentVariable[] @relation("ProjectEnvironmentVariables")
   githubConnection GitHubConnection?
   webhookId        String?
   preset           String?            @default("React")
@@ -163,4 +164,17 @@ model RequestLog {
   countryCode  String?  
 
   @@index([projectId, timestamp])
+}
+
+model EnvironmentVariable {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation("ProjectEnvironmentVariables", fields: [projectId], references: [id], onDelete: Cascade)
+  key            String
+  encryptedValue String
+  iv             String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([projectId, key])
 }

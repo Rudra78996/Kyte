@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FaGithub, FaLock } from "react-icons/fa";
 import { SiNextdotjs, SiReact, SiVuedotjs } from "react-icons/si";
-import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2 } from "lucide-react";
+import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2, Plus, X, Lock } from "lucide-react";
 import { useApiRequest, useApiToken } from "@/hooks/use-api";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { UserAvatar } from "@/components/user-avatar";
@@ -62,6 +62,7 @@ export default function NewProjectPage() {
   const [rootDirectory, setRootDirectory] = useState("./");
   const [buildCommand, setBuildCommand] = useState("npm run build");
   const [outputDirectory, setOutputDirectory] = useState("dist");
+  const [envVars, setEnvVars] = useState<{key: string, value: string}[]>([{ key: "", value: "" }]);
   const [branch, setBranch] = useState("main");
   
   // Organization settings
@@ -211,7 +212,8 @@ export default function NewProjectPage() {
         buildCommand,
         outputDirectory,
         branch,
-        organizationId: selectedOrgId
+        organizationId: selectedOrgId,
+        environmentVariables: envVars.filter(e => e.key.trim() && e.value.trim())
       });
       setProject(proj);
 
@@ -547,6 +549,68 @@ export default function NewProjectPage() {
                         placeholder=".next, build, dist"
                       />
                       <p className="text-xs leading-5 text-muted-foreground">The directory where your framework outputs its build.</p>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="environment-variables" className="border-none">
+                  <AccordionTrigger className="py-3 text-[13px] hover:no-underline border-t border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <Lock className="size-3.5 text-muted-foreground" />
+                      <span className="font-medium">Environment Variables</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="flex flex-col gap-4 pb-3">
+                    <p className="text-xs leading-5 text-muted-foreground">Securely add environment variables (e.g. API keys) that your project needs during the build process.</p>
+                    <div className="flex flex-col gap-3">
+                      {envVars.map((env, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input 
+                            type="text" 
+                            placeholder="Key (e.g. NEXT_PUBLIC_API_URL)" 
+                            value={env.key} 
+                            onChange={(e) => {
+                              const newVars = [...envVars];
+                              newVars[index].key = e.target.value;
+                              setEnvVars(newVars);
+                            }}
+                            className="flex-1 font-mono text-xs"
+                          />
+                          <Input 
+                            type="password" 
+                            placeholder="Value" 
+                            value={env.value} 
+                            onChange={(e) => {
+                              const newVars = [...envVars];
+                              newVars[index].value = e.target.value;
+                              setEnvVars(newVars);
+                            }}
+                            className="flex-1 font-mono text-xs"
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => {
+                              if (envVars.length > 1) {
+                                setEnvVars(envVars.filter((_, i) => i !== index));
+                              } else {
+                                setEnvVars([{ key: "", value: "" }]);
+                              }
+                            }}
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setEnvVars([...envVars, { key: "", value: "" }])}
+                        className="w-full mt-2 border-dashed border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      >
+                        <Plus className="size-3.5 mr-2" />
+                        Add Variable
+                      </Button>
                     </div>
                   </AccordionContent>
                 </AccordionItem>

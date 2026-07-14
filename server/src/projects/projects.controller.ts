@@ -82,4 +82,30 @@ export class ProjectsController {
   ) {
     return this.projectsService.delete(userId, projectId);
   }
+
+  @Get(':id/env')
+  async getEnv(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.getEnvironmentVariables(userId, projectId);
+  }
+
+  @Post(':id/env')
+  async upsertEnv(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Body() body: { variables: { key: string; value: string }[] },
+  ) {
+    return this.projectsService.upsertEnvironmentVariables(userId, projectId, body.variables);
+  }
+
+  @Delete(':id/env/:key')
+  async deleteEnv(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Param('key') key: string,
+  ) {
+    return this.projectsService.deleteEnvironmentVariable(userId, projectId, key);
+  }
 }
