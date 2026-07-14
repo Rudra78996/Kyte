@@ -73,6 +73,7 @@ export default function Dashboard() {
   }, [apiRequest]);
 
   useEffect(() => {
+    document.title = "Dashboard | Kyte";
     const timer = setTimeout(() => { void loadWorkspace(); }, 0);
     return () => clearTimeout(timer);
   }, [loadWorkspace]);
@@ -85,10 +86,10 @@ export default function Dashboard() {
   const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="app-page flex min-h-full flex-col gap-8">
+    <div className="app-page flex min-h-full flex-col gap-7">
       <header className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="page-heading">Overview</h1>
+          <p className="section-label">Workspace</p><h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-foreground">Overview</h1>
           <p className="page-subtitle">Your projects and the latest production activity.</p>
         </div>
         <Button render={<Link href="/new" />}>
@@ -99,8 +100,8 @@ export default function Dashboard() {
 
       {loading ? <DashboardLoading /> : projects.length === 0 ? <WorkspaceEmpty /> : <>
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <Card className="lg:col-span-8">
-            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+          <Card className="overflow-hidden rounded-lg lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-5 py-4">
               <div className="flex flex-col gap-1">
                 <CardTitle className="text-sm font-medium">Projects</CardTitle>
                 <CardDescription>Current production state for each project.</CardDescription>
@@ -115,7 +116,7 @@ export default function Dashboard() {
                 <Button variant="ghost" size="sm" render={<Link href="/new" />}>Add project<Plus data-icon="inline-end" /></Button>
               </div>
             </CardHeader>
-            <CardContent className="p-0 h-[312px] overflow-y-auto relative">
+            <CardContent className="app-scroll relative h-[312px] overflow-y-auto p-0">
               <div className="divide-y divide-border">
                 {filteredProjects.map((project) => <ProjectRow key={project.id} project={project} />)}
               </div>
@@ -123,20 +124,20 @@ export default function Dashboard() {
           </Card>
 
           <div className="flex flex-col gap-4 lg:col-span-4">
-            <Card>
-              <CardHeader className="border-b border-border">
+            <Card className="overflow-hidden rounded-lg">
+              <CardHeader className="border-b border-border px-5 py-4">
                 <CardTitle className="text-sm font-medium">Quick actions</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-2 p-4">
-                <Button variant="ghost" className="justify-start" render={<Link href="/new" />}><Plus data-icon="inline-start" />Import repository</Button>
-                <Button variant="ghost" className="justify-start" render={<Link href="/dashboard/deployments" />}><Rocket data-icon="inline-start" />Review deployments</Button>
-                <Button variant="ghost" className="justify-start" render={<Link href="/settings" />}><Settings2 data-icon="inline-start" />Workspace settings</Button>
+              <CardContent className="flex flex-col gap-1 p-3">
+                <Button variant="ghost" className="h-9 justify-start text-[13px]" render={<Link href="/new" />}><Plus data-icon="inline-start" />Import repository</Button>
+                <Button variant="ghost" className="h-9 justify-start text-[13px]" render={<Link href="/dashboard/deployments" />}><Rocket data-icon="inline-start" />Review deployments</Button>
+                <Button variant="ghost" className="h-9 justify-start text-[13px]" render={<Link href="/settings" />}><Settings2 data-icon="inline-start" />Workspace settings</Button>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="border-b border-border">
-                <CardTitle className="text-sm font-medium">Build configuration</CardTitle>
+            <Card className="overflow-hidden rounded-lg">
+              <CardHeader className="border-b border-border px-5 py-4">
+                <CardTitle className="text-sm font-medium">Workspace snapshot</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2 p-4 text-sm">
                 <MetaRow label="Projects" value={String(projects.length)} />
@@ -148,8 +149,8 @@ export default function Dashboard() {
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <Card className="lg:col-span-8">
-            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border">
+          <Card className="overflow-hidden rounded-lg lg:col-span-8">
+            <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-5 py-4">
               <div className="flex flex-col gap-1">
                 <CardTitle className="text-sm font-medium">Recent deployments</CardTitle>
                 <CardDescription>Most recent deployment for each project.</CardDescription>
@@ -160,10 +161,10 @@ export default function Dashboard() {
               {recentDeployments.length ? <div className="divide-y divide-border">{recentDeployments.slice(0, 2).map(({ project, deployment }) => <DeploymentRow key={deployment.id} project={project} deployment={deployment} />)}</div> : <div className="px-6 py-10 text-center"><p className="text-sm font-medium">No deployments yet</p><p className="mt-1 text-sm text-muted-foreground">Deploy a repository to see build activity here.</p></div>}
             </CardContent>
           </Card>
-          <Card className="lg:col-span-4">
-            <CardHeader className="border-b border-border">
-              <CardTitle className="text-sm font-medium">Environment preview</CardTitle>
-              <CardDescription>Production settings from your projects.</CardDescription>
+          <Card className="overflow-hidden rounded-lg lg:col-span-4">
+            <CardHeader className="border-b border-border px-5 py-4">
+              <CardTitle className="text-sm font-medium">Production snapshot</CardTitle>
+              <CardDescription>Output directories from your live projects.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 p-4 text-sm">
               {projects.slice(0, 3).map((project) => <div key={project.id} className="flex items-center justify-between gap-2"><span className="truncate text-muted-foreground">{project.name}</span><Badge variant="outline" className="shrink-0 font-mono text-[10px]">{project.outputDirectory || "dist"}</Badge></div>)}

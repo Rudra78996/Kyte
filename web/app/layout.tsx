@@ -7,7 +7,10 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { dark } from '@clerk/themes'
 
 export const metadata: Metadata = {
-  title: 'Kyte — Seamless Frontend Hosting',
+  title: {
+    template: '%s | Kyte',
+    default: 'Kyte',
+  },
   description: 'Deploy your frontend apps seamlessly.',
 }
 

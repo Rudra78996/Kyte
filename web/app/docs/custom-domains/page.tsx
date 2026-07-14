@@ -1,44 +1,15 @@
+import { CheckCircle2, Globe2, Link2, Settings2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link2 } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 
-export default function CustomDomainDocs() {
-  return (
-    <div className="flex-1 space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-neutral-100">
-          <Link2 className="w-6 h-6 text-neutral-400" />
-          Custom Domains
-        </h1>
-        <p className="text-muted-foreground text-lg">
-          Point your own domain to your deployed projects on Kyte.
-        </p>
-      </div>
-      <Separator className="my-8" />
-      
-      <div className="grid gap-6">
-        <Card className="bg-neutral-950 border-neutral-800 shadow-sm rounded-lg">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg font-medium tracking-tight">
-              Domain Setup
-            </CardTitle>
-            <CardDescription className="text-neutral-400">
-              Configuring DNS records
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-neutral-300 text-sm">
-            <p>
-              To add a custom domain to your project, you will need to add a CNAME record with your DNS provider (e.g. Cloudflare, Namecheap, Route53) pointing to your project&apos;s default Kyte URL.
-            </p>
-            <div className="bg-neutral-900 px-3 py-2.5 rounded border border-neutral-800 font-mono text-[13px] text-neutral-300 overflow-x-auto">
-              CNAME &nbsp;&nbsp;&nbsp; @ &nbsp;&nbsp;&nbsp; your-project.kyte.app
-            </div>
-            <p className="text-xs text-neutral-500">
-              Please note that DNS propagation can take up to 48 hours depending on your registrar.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+const steps = [
+  { label: "Add the domain", detail: "Open the project settings and enter the hostname you want to use.", icon: Settings2 },
+  { label: "Update DNS", detail: "Create a CNAME record with your provider that targets the Kyte project URL.", icon: Link2 },
+  { label: "Verify and go live", detail: "Once DNS resolves, Kyte can verify the domain and attach it to production.", icon: CheckCircle2 },
+];
+
+export const metadata = { title: "Custom Domains" };
+
+export default function CustomDomainsDocs() {
+  return <article className="animate-in fade-in slide-in-from-bottom-2 duration-500"><Badge variant="outline" className="font-mono text-[10px] border-violet-500/30 bg-violet-500/10 text-violet-400">HOSTING</Badge><div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_190px] lg:items-end"><div><h1 className="text-4xl font-semibold tracking-[-0.04em]">Connect a custom domain</h1><p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">Put your project on a domain people recognize. Kyte keeps the project URL and the custom hostname connected to the same production deployment.</p></div><div className="flex aspect-[1.25] items-end justify-between rounded-xl border border-violet-500/30 bg-violet-500/10 p-5 text-violet-300"><Globe2 className="size-10" strokeWidth={1.5} /><span className="font-mono text-[11px] uppercase tracking-[0.14em]">DNS</span></div></div><section className="mt-10"><Card className="overflow-hidden border-border bg-card shadow-none"><CardHeader className="border-b border-border px-5 py-4"><CardTitle className="text-sm font-medium">DNS record</CardTitle><CardDescription className="mt-1 text-xs">Use this as a starting point in your domain provider.</CardDescription></CardHeader><CardContent className="grid gap-0 p-0 sm:grid-cols-[120px_1fr]"><div className="border-b border-border bg-muted/30 px-5 py-4 font-mono text-xs text-muted-foreground sm:border-b-0 sm:border-r">CNAME</div><code className="app-scroll overflow-x-auto px-5 py-4 font-mono text-xs text-foreground">@ &nbsp;&nbsp; your-project.kyte.app</code></CardContent></Card></section><section className="mt-10"><p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Connection flow</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.03em]">Point the hostname at your project</h2><div className="mt-5 grid gap-3 sm:grid-cols-3">{steps.map((step, index) => { const Icon = step.icon; return <Card key={step.label} className="border-border bg-card shadow-none"><CardHeader className="px-5 py-5"><p className="font-mono text-[10px] text-muted-foreground">0{index + 1}</p><span className="mt-5 flex size-8 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"><Icon className="size-3.5" /></span><CardTitle className="mt-4 text-sm font-medium">{step.label}</CardTitle><CardDescription className="mt-1 text-xs leading-5">{step.detail}</CardDescription></CardHeader></Card>; })}</div></section><p className="mt-8 text-xs leading-5 text-muted-foreground">DNS updates can take time to propagate. Keep the project&apos;s default Kyte URL available while your custom hostname is being verified.</p></article>;
 }

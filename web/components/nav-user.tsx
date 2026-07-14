@@ -32,13 +32,32 @@ import {
   Info
 } from "lucide-react"
 
+interface Notification {
+  id: string
+  title: string
+  message: string
+  type: "SUCCESS" | "ERROR" | "INFO"
+  read: boolean
+  createdAt: string
+}
+
+function formatNotificationTime(value: string) {
+  const elapsed = Date.now() - new Date(value).getTime()
+  const minutes = Math.max(0, Math.floor(elapsed / 60000))
+  if (minutes < 1) return "Just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export function NavUser() {
   const { isMobile } = useSidebar()
   const { isLoaded, user } = useUser()
   const { signOut } = useClerk()
   const router = useRouter()
   const apiRequest = useApiRequest()
-  const [notifications, setNotifications] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [hasUnread, setHasUnread] = useState(false)
   const lastLenRef = useRef(0)
 
@@ -57,7 +76,7 @@ export function NavUser() {
         if (data.notifications) {
           setNotifications(data.notifications);
         }
-      } catch (e) {
+      } catch {
         console.error("Failed to fetch notifications");
       }
     };
@@ -141,46 +160,50 @@ export function NavUser() {
                 )}
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-80 p-0 overflow-hidden"
+                className="w-[22rem] overflow-hidden p-0"
                 side={isMobile ? "bottom" : "top"}
                 align="end"
                 sideOffset={8}
               >
-                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
-                  <span className="text-sm font-medium">Notifications</span>
+                <div className="flex items-center justify-between border-b border-border bg-zinc-900/40 px-4 py-3">
+                  <div><span className="text-sm font-medium">Notifications</span><p className="mt-0.5 text-[11px] text-muted-foreground">Deployment and project activity</p></div>
                   {notifications.length > 0 && (
-                    <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-transparent border-transparent text-muted-foreground">
-                      {notifications.length}
+                    <Badge variant="outline" className="border-zinc-700 bg-zinc-950 px-2 py-0.5 font-mono text-[10px] font-medium text-zinc-400">
+                      {notifications.length} {notifications.length === 1 ? 'event' : 'events'}
                     </Badge>
                   )}
                 </div>
-                <div className="flex flex-col gap-3 p-3 max-h-[350px] overflow-y-auto bg-muted/10">
+                <div className="app-scroll max-h-[360px] overflow-y-auto bg-zinc-950/30">
                   {notifications.length === 0 ? (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No new notifications</div>
+                    <div className="flex flex-col items-center justify-center px-6 py-10 text-center">
+                      <div className="mb-3 flex size-9 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400"><Bell className="size-4" /></div>
+                      <p className="text-sm font-medium text-zinc-300">You&apos;re all caught up</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Project activity and deployment updates will appear here.</p>
+                    </div>
                   ) : (
-                    notifications.map((notif) => (
-                      <div key={notif.id} className="flex gap-3 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:bg-muted/50 cursor-default">
-                        <div className="shrink-0 mt-0.5">
+                    <div className="divide-y divide-border">
+                    {notifications.map((notif) => (
+                      <div key={notif.id} className="group flex gap-3 px-4 py-3 transition-colors hover:bg-zinc-900/60">
+                        <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border ${notif.type === 'SUCCESS' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : notif.type === 'ERROR' ? 'border-red-500/20 bg-red-500/10 text-red-400' : 'border-zinc-800 bg-zinc-900 text-zinc-400'}`}>
                           {notif.type === 'SUCCESS' ? (
-                            <CheckCircle2 className="size-4 text-emerald-500" />
+                            <CheckCircle2 className="size-4" />
                           ) : notif.type === 'ERROR' ? (
-                            <AlertCircle className="size-4 text-red-500" />
+                            <AlertCircle className="size-4" />
                           ) : (
-                            <Info className="size-4 text-foreground" />
+                            <Info className="size-4" />
                           )}
                         </div>
-                        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-                          <p className="text-sm font-medium leading-none text-foreground">
-                            {notif.title}
-                          </p>
-                          <p className="text-[13px] text-muted-foreground leading-snug">
-                            {notif.message}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-zinc-200">{notif.title}</p>{!notif.read && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-zinc-300" />}</div>
+                          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{notif.message}</p>
+                          <p className="mt-1 font-mono text-[10px] text-zinc-600">{formatNotificationTime(notif.createdAt)}</p>
                         </div>
                       </div>
-                    ))
+                    ))}
+                    </div>
                   )}
                 </div>
+                {notifications.length > 0 && <div className="border-t border-border bg-zinc-900/30 px-4 py-2 text-[11px] text-zinc-500">New activity is checked automatically.</div>}
               </DropdownMenuContent>
             </DropdownMenu>
 

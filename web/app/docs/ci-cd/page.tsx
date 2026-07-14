@@ -1,41 +1,26 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { GitBranch } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
+import { GitCommitHorizontal, RotateCw, ShieldCheck, Timer } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeploymentRun } from "@/components/docs-visuals";
+
+const guarantees = [
+  { title: "A clean build every time", detail: "Each deployment starts with a fresh build environment and the configuration saved on the project.", icon: RotateCw },
+  { title: "Visibility while it runs", detail: "Watch install, build, and publish output as it happens from the project deployment view.", icon: Timer },
+  { title: "Production changes on success", detail: "Kyte only updates the production deployment when the build has completed successfully.", icon: ShieldCheck },
+];
+
+export const metadata = { title: "Continuous Deployment" };
 
 export default function CiCdDocs() {
   return (
-    <div className="flex-1 space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-neutral-100">
-          <GitBranch className="w-6 h-6 text-neutral-400" />
-          Continuous Deployment
-        </h1>
-        <p className="text-muted-foreground text-lg">
-          Connect your GitHub repository to automatically deploy changes on every push.
-        </p>
-      </div>
-      <Separator className="my-8" />
-      
-      <div className="grid gap-6">
-        <Card className="bg-neutral-950 border-neutral-800 shadow-sm rounded-lg">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg font-medium tracking-tight">
-              Webhook Integration
-            </CardTitle>
-            <CardDescription className="text-neutral-400">
-              Automate your workflow
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-neutral-300 text-sm">
-            <p>
-              Kyte supports automatic deployments out of the box when you link a GitHub repository. Every time you push to the configured production branch, a new build is triggered automatically in an isolated sandbox.
-            </p>
-            <p>
-              No additional configuration or GitHub Actions are required.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    <article className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <Badge variant="outline" className="font-mono text-[10px] border-emerald-500/30 bg-emerald-500/10 text-emerald-400">DEPLOY</Badge>
+      <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">Continuous deployment</h1>
+      <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">Every commit to your production branch can become a release. Kyte handles the event, build, output checks, and production update as one connected run.</p>
+
+      <section className="mt-10"><DeploymentRun /></section>
+
+      <section className="mt-10"><div className="flex items-center gap-2"><GitCommitHorizontal className="size-4 text-muted-foreground" /><h2 className="text-lg font-semibold tracking-[-0.02em]">What happens after a push</h2></div><div className="mt-4 grid gap-3 sm:grid-cols-3">{guarantees.map((item) => { const Icon = item.icon; return <Card key={item.title} className="border-border bg-card shadow-none"><CardHeader className="px-5 py-5"><span className="flex size-8 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"><Icon className="size-3.5" /></span><CardTitle className="mt-5 text-sm font-medium">{item.title}</CardTitle><CardDescription className="mt-1 text-xs leading-5">{item.detail}</CardDescription></CardHeader></Card>; })}</div></section>
+    </article>
   );
 }

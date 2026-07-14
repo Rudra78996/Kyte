@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { useApiRequest } from "@/hooks/use-api"
 import { NavUser } from "@/components/nav-user"
@@ -38,7 +38,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  BoxIcon,
   PlusIcon,
   MoreHorizontal,
   Trash2,
@@ -57,7 +56,6 @@ type RequestError = Error & { status?: number; details?: { suggestedSlug?: strin
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
-  const router = useRouter();
   const apiRequest = useApiRequest();
 
   interface SidebarOrg {
@@ -68,6 +66,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   interface SidebarProject {
     id: string;
     name: string;
+  }
+
+  interface SidebarDeployment {
+    id: string;
+    status: string;
+    commitSha?: string;
+    project?: { name?: string };
   }
 
   const [projects, setProjects] = React.useState<SidebarProject[]>([]);
@@ -140,7 +145,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         const res = await apiRequest('GET', `/organizations/${activeOrg.id}/deployments`);
         const deployments = res.deployments || [];
         
-        deployments.forEach((d: any) => {
+        deployments.forEach((d: SidebarDeployment) => {
           const prevStatus = lastDeploymentStatuses.current[d.id];
           
           if (prevStatus && prevStatus !== d.status) {
@@ -157,7 +162,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           
           lastDeploymentStatuses.current[d.id] = d.status;
         });
-      } catch (e) {
+      } catch {
         // silently fail polling
       }
     }, 5000);
@@ -190,7 +195,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <>
       <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border bg-sidebar" {...props}>
-        <SidebarHeader className="border-b border-sidebar-border p-3 bg-sidebar">
+        <SidebarHeader className="border-b border-sidebar-border bg-sidebar p-3">
           <SidebarMenu>
             <SidebarMenuItem>
               <DropdownMenu>
@@ -198,12 +203,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <SidebarMenuButton
                     size="lg"
                     data-slot="team-switcher"
-                    className="w-full justify-between hover:bg-sidebar-accent hover:text-sidebar-foreground text-sidebar-foreground border border-dashed border-border bg-background/30 shadow-sm"
+                    className="w-full justify-between rounded-lg border border-sidebar-border bg-zinc-900/40 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   />
                 }>
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/50 bg-sidebar-accent/50 text-sidebar-foreground">
-                        <Command className="size-4" />
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-300">
+                        <Command className="size-3.5" />
                       </div>
                       <span className="font-semibold text-sm truncate">{activeOrg ? activeOrg.name : 'No Organization'}</span>
                     </div>
@@ -239,13 +244,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         <SidebarContent className="bg-sidebar px-2 py-3">
           <SidebarGroup className="px-0 py-0 mb-4">
-            <Button className="w-full bg-white text-black hover:bg-zinc-200 h-9 rounded-md" render={<Link href="/new" />}>
-              <PlusIcon className="w-4 h-4 mr-2" /> Create Project
+            <Button className="h-9 w-full rounded-md bg-white text-[13px] font-medium text-black hover:bg-zinc-200" render={<Link href="/new" />}>
+              <PlusIcon className="size-3.5" /> Create Project
             </Button>
           </SidebarGroup>
 
           <SidebarGroup className="px-0 py-0">
-            <SidebarGroupLabel className="mb-1 px-2.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Navigation</SidebarGroupLabel>
+            <SidebarGroupLabel className="mb-1 px-2.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Workspace</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -272,7 +277,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroup>
           <SidebarGroup className="mt-5 px-0 py-0 flex-1 min-h-0 flex flex-col">
-            <SidebarGroupLabel className="mb-1 px-2.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase flex items-center justify-between shrink-0">
+            <SidebarGroupLabel className="mb-1 flex shrink-0 items-center justify-between px-2.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
               Recent projects
             </SidebarGroupLabel>
             <div className="px-2 mb-3 relative shrink-0">
@@ -284,7 +289,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 className="h-8 text-xs bg-sidebar-accent/50 border border-border/50 pl-8 focus-visible:ring-1 focus-visible:ring-ring rounded-md"
               />
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0 pb-4">
+            <div className="app-scroll min-h-0 flex-1 overflow-y-auto pb-4">
               <SidebarMenu>
                 {projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase())).map((project) => {
                 const isActive = pathname.includes(`/projects/${project.id}`);
@@ -294,12 +299,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       tooltip={project.name}
                       className={`h-9 w-full rounded-md px-2.5 text-[13px] font-medium transition-colors group/button ${
                         isActive
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                       }`}
                       render={<Link href={`/projects/${project.id}`} />}
                     >
-                      <AppWindow className={isActive ? 'text-indigo-400 size-4 mr-2 shrink-0' : 'text-muted-foreground size-4 mr-2 shrink-0'} />
+                      <AppWindow className={isActive ? 'mr-2 size-3.5 shrink-0 text-zinc-200' : 'mr-2 size-3.5 shrink-0 text-muted-foreground'} />
                       <span className="flex-1 truncate">{project.name}</span>
                     </SidebarMenuButton>
 
@@ -357,7 +362,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     } else {
                       window.location.reload();
                     }
-                  } catch (e) {
+                  } catch {
                     toast.error("Failed to delete project");
                   }
                 }
@@ -372,19 +377,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* Create Organization Modal */}
       {showCreateOrg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-lg border border-border bg-card p-6 sm:p-8 shadow-xl">
+          <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
             <button
               type="button"
               onClick={() => { setShowCreateOrg(false); setCreateOrgError(""); }}
-              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-zinc-900 hover:text-foreground"
             >
               <X className="size-5" />
             </button>
-            <div className="mb-6">
-              <h2 className="text-lg font-medium tracking-tight">Create Organization</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Add a new workspace for your team.</p>
+            <div className="border-b border-zinc-800 px-6 pb-5 pt-6 sm:px-7">
+              <div className="mb-3 flex size-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300"><Building2 className="size-4" /></div>
+              <h2 className="text-lg font-semibold tracking-[-0.02em]">Create organization</h2>
+              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">A workspace for your projects, deployments, and team.</p>
             </div>
-            <form onSubmit={handleCreateOrg} className="flex flex-col gap-5">
+            <form onSubmit={handleCreateOrg} className="flex flex-col gap-5 px-6 py-5 sm:px-7">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Organization Name</label>
                 <Input
@@ -400,7 +406,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Organization URL</label>
                 <div className="flex items-center">
-                  <span className="rounded-l-md border border-r-0 border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+                  <span className="rounded-l-md border border-r-0 border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-500">
                     kyte.com/
                   </span>
                   <Input
@@ -413,11 +419,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <p className="text-xs leading-5 text-muted-foreground">Use lowercase letters, numbers, and hyphens.</p>
               </div>
               {createOrgError && (
-                <div className="rounded-md border border-destructive bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <p>{createOrgError}</p>
                 </div>
               )}
-              <div className="flex justify-end gap-3">
+              <div className="-mx-6 -mb-5 mt-1 flex justify-end gap-2 border-t border-zinc-800 bg-zinc-900/30 px-6 py-3 sm:-mx-7 sm:px-7">
                 <Button type="button" variant="ghost" onClick={() => { setShowCreateOrg(false); setCreateOrgError(""); }}>
                   Cancel
                 </Button>

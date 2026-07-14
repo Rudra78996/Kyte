@@ -1,0 +1,9 @@
+import { Building2, FolderKanban, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+
+export const metadata = { title: "Organizations" };
+
+export default function OrganizationsDocs() {
+  return <article className="animate-in fade-in slide-in-from-bottom-2 duration-500"><Badge variant="outline" className="font-mono text-[10px] border-indigo-500/30 bg-indigo-500/10 text-indigo-400">GETTING STARTED</Badge><h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">Organizations</h1><p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">Organizations are workspaces for teams. Keep related projects, deployment activity, and collaborators together under one workspace.</p><div className="mt-10 grid gap-3">{[[Building2, "Create a workspace", "Use the organization switcher in the sidebar, then choose Create organization. Give it a clear name and URL."], [FolderKanban, "Keep projects together", "New projects are created inside the active organization. Switch workspaces from the sidebar whenever you need to."], [Users, "Grow with your team", "Organization membership provides the foundation for adding team access and collaboration controls."]].map(([Icon, title, detail]) => { const Glyph = Icon as typeof Building2; return <Card key={title as string} className="border-border bg-card shadow-none"><CardContent className="flex gap-3 p-5"><span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400"><Glyph className="size-3.5" /></span><div><p className="text-sm font-medium">{title as string}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{detail as string}</p></div></CardContent></Card>; })}</div></article>;
+}
