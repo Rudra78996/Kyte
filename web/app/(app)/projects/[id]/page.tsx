@@ -55,7 +55,21 @@ interface SettingsForm {
   outputDirectory: string;
 }
 
+interface ProjectMetrics {
+  pageviews: number
+  visitors: number
+  avgResponse: number
+  avgBuild: number
+  health: number
+  successfulDeployments: number
+  failedDeployments: number
+  totalDeployments: number
+  trafficData: { day: string; pageviews: number; visitors: number }[]
+  locations: { country: string; code: string; visitors: string; share: number }[]
+}
+
 export default function ProjectPage() {
+  useEffect(() => { document.title = "Project | Kyte"; }, []);
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -65,7 +79,7 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [activeDeploy, setActiveDeploy] = useState<Deployment | null>(null);
-  const [metrics, setMetrics] = useState<any>(null);
+  const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [logs, setLogs] = useState<{ stream: string; text: string }[]>([]);
   const [logQuery, setLogQuery] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -216,6 +230,7 @@ export default function ProjectPage() {
   };
 
   const currentDeployStatus = activeDeploy?.status || 'UNKNOWN';
+  const metricLocations = metrics?.locations ?? [];
   return (
     <div className="min-h-full w-full bg-background text-foreground">
       {/* Top Navbar */}
@@ -377,7 +392,7 @@ export default function ProjectPage() {
                 <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-4">
                   <div className="flex items-center gap-2 border-b border-border px-5 py-4"><MapPinned className="size-3.5 text-zinc-500" /><div><h3 className="text-sm font-medium">Traffic location</h3><p className="mt-1 text-xs text-muted-foreground">Where your visitors are coming from.</p></div></div>
                   <div className="divide-y divide-border px-5 py-1">
-                    {metrics?.locations?.length > 0 ? metrics.locations.map((location: any) => (
+                    {metricLocations.length > 0 ? metricLocations.map((location) => (
                       <div key={location.country} className="py-3">
                         <div className="flex items-center justify-between text-xs"><span className="flex items-center gap-2 text-zinc-300"><span className="flex size-5 items-center justify-center rounded bg-zinc-900 font-mono text-[9px] text-zinc-500">{location.code}</span>{location.country}</span><span className="font-mono text-zinc-500">{location.share}%</span></div>
                         <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-900"><div className="h-full rounded-full bg-zinc-500" style={{ width: `${location.share}%` }} /></div>
@@ -519,7 +534,7 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              <div className="app-scroll min-h-0 flex-1 overflow-y-auto bg-zinc-950 py-3 font-mono text-xs leading-5 text-zinc-300">
+              <div className="flex-1 overflow-y-auto bg-zinc-950 font-mono text-xs leading-5 text-zinc-300">
                 {logs.length === 0 && <div className="flex h-full min-h-80 items-center justify-center gap-2 text-zinc-500 animate-pulse"><RefreshCw className="size-3.5 animate-spin" />Waiting for build output</div>}
                 {logs.filter((log) => log.text.toLowerCase().includes(logQuery.toLowerCase())).map((log, i) => (
                   <div key={i} className="grid grid-cols-[78px_minmax(0,1fr)] px-4 py-1 hover:bg-zinc-900/70">

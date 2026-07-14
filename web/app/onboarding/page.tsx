@@ -10,6 +10,7 @@ type RequestError = Error & { status?: number; details?: { suggestedSlug?: strin
 
 export default function OnboardingPage() {
   const router = useRouter();
+  useEffect(() => { document.title = "Onboarding | Kyte"; }, []);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);

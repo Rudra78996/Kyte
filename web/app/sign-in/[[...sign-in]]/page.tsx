@@ -4,7 +4,7 @@ import { useSignIn } from '@clerk/nextjs'
 import { GitBranch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub, FaReact, FaPython } from "react-icons/fa";
 import { SiNextdotjs } from "react-icons/si";
@@ -13,6 +13,7 @@ import { VscSourceControl } from "react-icons/vsc";
 export default function Page() {
   const { signIn } = useSignIn();
   const [email, setEmail] = useState('');
+  useEffect(() => { document.title = "Sign In | Kyte"; }, []);
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');

@@ -122,6 +122,7 @@ function SettingsContent() {
 }
 
 export default function Settings() {
+  useEffect(() => { document.title = "Settings | Kyte"; }, []);
   return (
     <Suspense fallback={<div className="py-24 text-center text-muted-foreground animate-pulse">Loading…</div>}>
       <SettingsContent />

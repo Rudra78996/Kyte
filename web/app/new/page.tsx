@@ -135,6 +135,7 @@ export default function NewProjectPage() {
   }
 
   useEffect(() => {
+    document.title = "New Project | Kyte";
     const timer = setTimeout(() => {
       void checkGithubConnection();
       void fetchOrganizations();

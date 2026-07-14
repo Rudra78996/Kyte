@@ -1,5 +1,7 @@
 import { AuthenticateWithRedirectCallback } from '@clerk/nextjs'
 
+export const metadata = { title: "Logging In" };
+
 export default function SSOCallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-50 dark:bg-neutral-950">
