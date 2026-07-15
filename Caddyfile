@@ -1,0 +1,48 @@
+{
+	# Caddy calls this before issuing an on-demand certificate. The API only
+	# allows domains that have completed TXT verification.
+	on_demand_tls {
+		ask http://api:3000/api/caddy/check-domain
+	}
+}
+
+# Local dashboard and API entry point.
+http://localhost {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:3000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# Local project URLs, such as project-name.localhost, are served over HTTP.
+http://*.localhost {
+	rewrite * /serve/host/{host}{uri}
+	reverse_proxy api:3000
+}
+
+# Kyte's public dashboard and API. Caddy provisions and renews this certificate.
+{$BASE_DOMAIN} {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:3000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# Verified custom hostnames are served by the API from the active deployment.
+# The certificate is requested only after /api/caddy/check-domain approves it.
+https:// {
+	tls {
+		on_demand
+	}
+
+	rewrite * /serve/host/{host}{uri}
+	reverse_proxy api:3000
+}

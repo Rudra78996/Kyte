@@ -60,6 +60,8 @@ model Project {
   activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
   deployments      Deployment[]       @relation("ProjectDeployments")
   requestLogs      RequestLog[]       @relation("ProjectRequestLogs")
+  environmentVariables EnvironmentVariable[] @relation("ProjectEnvironmentVariables")
+  customDomains    CustomDomain[]     @relation("ProjectCustomDomains")
   githubConnection GitHubConnection?
   webhookId        String?
   preset           String?            @default("React")
@@ -163,4 +165,30 @@ model RequestLog {
   countryCode  String?  
 
   @@index([projectId, timestamp])
+}
+
+model EnvironmentVariable {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation("ProjectEnvironmentVariables", fields: [projectId], references: [id], onDelete: Cascade)
+  key            String
+  encryptedValue String
+  iv             String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([projectId, key])
+}
+
+model CustomDomain {
+  id                String   @id @default(cuid())
+  domainName        String   @unique
+  projectId         String
+  project           Project  @relation("ProjectCustomDomains", fields: [projectId], references: [id], onDelete: Cascade)
+  verificationToken String
+  status            String   @default("pending") // pending, verified
+  verifiedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([projectId])
 }

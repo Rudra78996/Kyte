@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FaGithub, FaLock } from "react-icons/fa";
 import { SiNextdotjs, SiReact, SiVuedotjs } from "react-icons/si";
-import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2 } from "lucide-react";
+import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2, KeyRound } from "lucide-react";
 import { useApiRequest, useApiToken } from "@/hooks/use-api";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { UserAvatar } from "@/components/user-avatar";
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { EnvironmentVariableEditor } from "@/components/environment-variable-editor";
 
 interface GithubRepo {
   id: number;
@@ -62,6 +63,7 @@ export default function NewProjectPage() {
   const [rootDirectory, setRootDirectory] = useState("./");
   const [buildCommand, setBuildCommand] = useState("npm run build");
   const [outputDirectory, setOutputDirectory] = useState("dist");
+  const [envVars, setEnvVars] = useState<{key: string, value: string}[]>([{ key: "", value: "" }]);
   const [branch, setBranch] = useState("main");
   
   // Organization settings
@@ -211,7 +213,8 @@ export default function NewProjectPage() {
         buildCommand,
         outputDirectory,
         branch,
-        organizationId: selectedOrgId
+        organizationId: selectedOrgId,
+        environmentVariables: envVars.filter(e => e.key.trim())
       });
       setProject(proj);
 
@@ -519,15 +522,15 @@ export default function NewProjectPage() {
                 <p className="text-xs leading-5 text-muted-foreground">The directory within your project that contains the source code.</p>
               </div>
 
-              <Accordion className="mt-1 w-full rounded-lg border border-zinc-800 px-3">
+              <Accordion className="mt-1 w-full rounded-lg border border-zinc-800 px-4">
                 <AccordionItem value="build-settings" className="border-none">
-                  <AccordionTrigger className="py-3 text-[13px] hover:no-underline">
+                  <AccordionTrigger className="py-3 text-[14px] hover:no-underline">
                     <div className="flex items-center gap-2">
                       <Settings2 className="size-3.5 text-muted-foreground" />
-                      <span className="font-medium">Build and Output Settings</span>
+                      <span className="font-medium text-zinc-300">Build and Output Settings</span>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="flex flex-col gap-4 pb-3">
+                  <AccordionContent className="flex flex-col gap-4 pb-4">
                     <div className="flex flex-col gap-2 pt-2">
                       <Label>Build Command</Label>
                       <Input 
@@ -548,6 +551,20 @@ export default function NewProjectPage() {
                       />
                       <p className="text-xs leading-5 text-muted-foreground">The directory where your framework outputs its build.</p>
                     </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <Accordion className="mt-1 w-full rounded-lg border border-zinc-800 px-4">
+                <AccordionItem value="environment-variables" className="border-none">
+                  <AccordionTrigger className="py-3 text-[14px] hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="size-3.5 text-muted-foreground" />
+                      <span className="font-medium text-zinc-300">Environment Variables</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-4 pt-2">
+                    <EnvironmentVariableEditor value={envVars} onChange={setEnvVars} compact />
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>

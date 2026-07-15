@@ -70,7 +70,7 @@ Create a stable baseline for local development and deployment.
 
 ### Scope
 - Monorepo/workspace setup confirmation
-- Docker Compose stack (api, worker, postgres, redis, minio, nginx)
+- Docker Compose stack (api, worker, postgres, redis, minio, Caddy)
 - Environment template (`.env.example`)
 - Shared TypeScript config and lint rules
 - Basic health endpoints (`/health`)
