@@ -108,4 +108,38 @@ export class ProjectsController {
   ) {
     return this.projectsService.deleteEnvironmentVariable(userId, projectId, key);
   }
+  @Post(':id/domains')
+  async addDomain(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Body() body: { domainName: string },
+  ) {
+    return this.projectsService.addDomain(userId, projectId, body.domainName);
+  }
+
+  @Get(':id/domains')
+  async getDomains(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+  ) {
+    return this.projectsService.getDomains(userId, projectId);
+  }
+
+  @Delete(':id/domains/:domainName')
+  async deleteDomain(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Param('domainName') domainName: string,
+  ) {
+    return this.projectsService.deleteDomain(userId, projectId, domainName);
+  }
+
+  @Post(':id/domains/:domainName/verify')
+  async verifyDomain(
+    @CurrentUser('id') userId: string,
+    @Param('id') projectId: string,
+    @Param('domainName') domainName: string,
+  ) {
+    return this.projectsService.verifyDomain(userId, projectId, domainName);
+  }
 }

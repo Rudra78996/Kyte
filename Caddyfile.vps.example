@@ -1,0 +1,42 @@
+{
+	# Set this in /etc/caddy/Caddyfile for ACME account notifications.
+	email admin@example.com
+
+	# This must appear only once in a shared Caddyfile. It protects Kyte's
+	# catch-all custom-domain TLS block from certificate-issuance abuse.
+	on_demand_tls {
+		ask http://127.0.0.1:3000/api/caddy/check-domain
+	}
+}
+
+# Kyte dashboard and API. Replace app.example.com with BASE_DOMAIN.
+app.example.com {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3002
+	}
+}
+
+# Other applications use their own fixed hostname blocks. Add one per project.
+blog.example.com {
+	reverse_proxy 127.0.0.1:4000
+}
+
+status.example.com {
+	reverse_proxy 127.0.0.1:4100
+}
+
+# Kyte generated subdomains and verified customer domains. Keep this generic
+# block after all fixed hostnames for the other applications on this VPS.
+https:// {
+	tls {
+		on_demand
+	}
+
+	rewrite * /serve/host/{host}{uri}
+	reverse_proxy 127.0.0.1:3000
+}

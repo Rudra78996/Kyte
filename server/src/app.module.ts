@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
+import { CaddyController } from './caddy.controller';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -48,7 +49,7 @@ import Redis from 'ioredis';
     ServeModule,
     WebhooksModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, CaddyController],
   providers: [
     {
       provide: APP_GUARD,

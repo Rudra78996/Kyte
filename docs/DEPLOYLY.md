@@ -247,24 +247,26 @@ Terminal UI in dashboard
 
 No polling. No WebSocket setup overhead. SSE gives a persistent unidirectional stream that works over plain HTTP.
 
-### Nginx Subdomain Routing
+### Caddy Subdomain Routing
 
 Wildcard DNS record: `*.deployly.dev → EC2 IP`
 
-Nginx regex-captures the project slug from the hostname and forwards to a lookup endpoint:
+Caddy sends the original host and path to a lookup endpoint. It also manages the
+TLS certificate lifecycle for verified hostnames:
 
-```nginx
-server {
-  listen 80;
-  server_name ~^(?<project>.+)\.deployly\.dev$;
-
-  location / {
-    proxy_pass http://localhost:3000/serve/$project$request_uri;
+```caddyfile
+https:// {
+  tls {
+    on_demand
   }
+
+  rewrite * /serve/host/{host}{uri}
+  reverse_proxy api:3000
 }
 ```
 
-The NestJS `/serve/:slug` endpoint looks up the project's active `deployId` from the database, resolves the MinIO prefix, and either proxies the file or returns a presigned URL redirect.
+The NestJS `/serve/host/:host` endpoint looks up the project's active deployment,
+resolves the MinIO prefix, and streams the requested file.
 
 ---
 
@@ -367,10 +369,13 @@ services:
     volumes: [minio_data:/data]
     networks: [app-net]
 
-  nginx:
-    image: nginx:alpine
-    ports: ['80:80']
-    volumes: ['./nginx.conf:/etc/nginx/nginx.conf:ro']
+  caddy:
+    image: caddy:2-alpine
+    ports: ['80:80', '443:443']
+    volumes:
+      - './Caddyfile:/etc/caddy/Caddyfile:ro'
+      - caddy_data:/data
+      - caddy_config:/config
     networks: [app-net]
     depends_on: [api]
 
@@ -381,6 +386,8 @@ networks:
 volumes:
   postgres_data:
   minio_data:
+  caddy_data:
+  caddy_config:
 ```
 
 > The `worker-net` is intentionally isolated. The worker only needs Redis (for the queue and log pub/sub). It never directly touches Postgres or MinIO — those writes go through the API after the build completes.
@@ -409,7 +416,7 @@ deployly/
 │       └── layout.tsx
 │
 ├── docker-compose.yml
-├── nginx.conf
+├── Caddyfile
 └── .env.example
 ```
 

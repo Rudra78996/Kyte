@@ -19,6 +19,8 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX } from 'lucide-react';
 import Link from 'next/link';
 import { ProjectAvatar } from '@/components/project-avatar';
+import { EnvironmentVariableEditor } from '@/components/environment-variable-editor';
+import { DomainManager } from '@/components/domain-manager';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 
@@ -91,6 +93,7 @@ export default function ProjectPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [envVars, setEnvVars] = useState<{key: string, value: string}[]>([]);
   const [isSavingEnv, setIsSavingEnv] = useState(false);
+  const [hasEnvChanges, setHasEnvChanges] = useState(false);
 
   const copyLogs = async () => {
     await navigator.clipboard.writeText(logs.map((log) => log.text).join(''));
@@ -130,11 +133,11 @@ export default function ProjectPage() {
       if (metricsData) setMetrics(metricsData);
       
       const envData = await apiRequest('GET', `/projects/${projectId}/env`).catch(() => []);
-      if (Array.isArray(envData)) {
+      if (Array.isArray(envData) && !hasEnvChanges) {
         setEnvVars(envData.length ? envData : [{ key: "", value: "" }]);
       }
     } catch (err) { console.error(err); }
-  }, [apiRequest, projectId]);
+  }, [apiRequest, hasEnvChanges, projectId]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadData(); }, 0);
@@ -195,8 +198,10 @@ export default function ProjectPage() {
   const saveEnvVars = async () => {
     setIsSavingEnv(true);
     try {
-      await apiRequest('POST', `/projects/${projectId}/env`, { variables: envVars.filter(e => e.key.trim() && e.value.trim()) });
+      await apiRequest('POST', `/projects/${projectId}/env`, { variables: envVars.filter(e => e.key.trim()) });
       alert('Environment variables saved successfully!');
+      setHasEnvChanges(false);
+      void loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save environment variables');
     }
@@ -629,58 +634,9 @@ export default function ProjectPage() {
                   <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Environment Variables</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Manage environment variables for your project. These are securely injected during the build step.</p>
                 </div>
-                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3">
-                  <div className="flex flex-col gap-4 p-6">
-                    {envVars.map((env, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <input 
-                          type="text" 
-                          placeholder="Key (e.g. API_KEY)" 
-                          value={env.key} 
-                          onChange={(e) => {
-                            const newVars = [...envVars];
-                            newVars[index].key = e.target.value;
-                            setEnvVars(newVars);
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <input 
-                          type="password" 
-                          placeholder="Value" 
-                          value={env.value} 
-                          onChange={(e) => {
-                            const newVars = [...envVars];
-                            newVars[index].value = e.target.value;
-                            setEnvVars(newVars);
-                          }}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => {
-                            if (envVars.length > 1) {
-                              setEnvVars(envVars.filter((_, i) => i !== index));
-                            } else {
-                              setEnvVars([{ key: "", value: "" }]);
-                            }
-                          }}
-                          className="h-9 w-9 text-muted-foreground hover:text-foreground shrink-0"
-                        >
-                          <CircleX className="size-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => setEnvVars([...envVars, { key: "", value: "" }])}
-                      className="w-full mt-2 border-dashed border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                    >
-                      Add Variable
-                    </Button>
-                  </div>
-                  <div className="flex justify-end border-t border-border bg-zinc-900/30 px-6 py-4">
+                <div className="w-full md:w-2/3">
+                  <EnvironmentVariableEditor value={envVars} onChange={(variables) => { setEnvVars(variables); setHasEnvChanges(true); }} />
+                  <div className="mt-3 flex justify-end rounded-lg border border-border bg-muted/20 px-4 py-3">
                     <Button onClick={saveEnvVars} disabled={isSavingEnv}>
                       {isSavingEnv ? 'Saving...' : 'Save variables'}
                     </Button>
@@ -753,7 +709,7 @@ export default function ProjectPage() {
                 <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="text-sm font-medium">Production domain</h3><p className="mt-1 text-xs text-muted-foreground">The default URL for your live deployment.</p></div><Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Active</Badge></div>
                 <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.localhost</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
               </div>
-              <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20 px-5 py-4"><p className="text-sm font-medium">Custom domains</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Connect a custom domain when you&apos;re ready. DNS verification and SSL will be handled here.</p></div>
+              <DomainManager projectId={projectId} />
             </div>
           )}
         </div>

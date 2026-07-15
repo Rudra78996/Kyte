@@ -4,6 +4,8 @@ import {
   CreateProjectDto,
   UpdateProjectDto,
 } from './dto/project.dto';
+import { randomBytes } from 'node:crypto';
+import { resolveTxt } from 'node:dns/promises';
 import { encrypt, decrypt } from '../utils/crypto.util';
 
 @Injectable()
@@ -407,5 +409,123 @@ export class ProjectsService {
 
   private generateSubdomain(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  private normalizeDomain(domainName: string) {
+    let normalized = domainName.trim().toLowerCase().replace(/\.$/, '');
+    if (/^https?:\/\//.test(normalized)) {
+      try {
+        normalized = new URL(normalized).hostname.toLowerCase();
+      } catch {
+        throw new BadRequestException('Enter a valid hostname, without a path');
+      }
+    }
+
+    const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+    const localHostnamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:localhost|local)$/;
+    if (!hostnamePattern.test(normalized) && !localHostnamePattern.test(normalized)) {
+      throw new BadRequestException('Enter a valid hostname, without a port, path, or wildcard');
+    }
+
+    const baseDomain = (process.env.BASE_DOMAIN || '').trim().toLowerCase().replace(/\.$/, '');
+    if (normalized === baseDomain) {
+      throw new BadRequestException('This hostname is reserved for the Kyte application');
+    }
+    return normalized;
+  }
+
+  private serializeDomain(domain: { domainName: string; verificationToken: string; status: string; verifiedAt: Date | null; createdAt: Date }) {
+    const routingTarget = process.env.DOMAIN_CNAME_TARGET || process.env.BASE_DOMAIN || 'your-kyte-hostname';
+    return {
+      ...domain,
+      dnsRecords: {
+        routing: { type: 'CNAME', name: domain.domainName, value: routingTarget },
+        verification: { type: 'TXT', name: `_kyte.${domain.domainName}`, value: domain.verificationToken },
+      },
+    };
+  }
+
+  async addDomain(userId: string, projectId: string, domainName: string) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const normalizedDomain = this.normalizeDomain(domainName);
+
+    const existing = await this.prisma.customDomain.findUnique({ where: { domainName: normalizedDomain } });
+    if (existing) {
+      if (existing.projectId === projectId) return this.serializeDomain(existing);
+      throw new BadRequestException('Domain is already associated with another project');
+    }
+
+    const token = `kyte-verify=${randomBytes(16).toString('hex')}`;
+    const domain = await this.prisma.customDomain.create({
+      data: {
+        projectId,
+        domainName: normalizedDomain,
+        verificationToken: token,
+        status: 'pending'
+      }
+    });
+    return this.serializeDomain(domain);
+  }
+
+  async getDomains(userId: string, projectId: string) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const domains = await this.prisma.customDomain.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return domains.map((domain) => this.serializeDomain(domain));
+  }
+
+  async deleteDomain(userId: string, projectId: string, domainName: string) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const normalizedDomain = this.normalizeDomain(domainName);
+    await this.prisma.customDomain.deleteMany({
+      where: { projectId, domainName: normalizedDomain }
+    });
+    return { success: true };
+  }
+
+  async verifyDomain(userId: string, projectId: string, domainName: string) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const normalizedDomain = this.normalizeDomain(domainName);
+    const domain = await this.prisma.customDomain.findUnique({ where: { domainName: normalizedDomain } });
+    if (!domain || domain.projectId !== projectId) throw new NotFoundException('Domain not found in this project');
+
+    if (domain.status === 'verified') {
+      return { status: 'verified', message: 'Domain is already verified' };
+    }
+
+    const isLocalDomain = normalizedDomain.endsWith('.localhost') || normalizedDomain.endsWith('.local');
+    if (process.env.NODE_ENV !== 'production' && isLocalDomain) {
+      await this.prisma.customDomain.update({
+        where: { id: domain.id },
+        data: { status: 'verified', verifiedAt: new Date() }
+      });
+      return { status: 'verified', message: 'Domain automatically verified for local development' };
+    }
+
+    try {
+      const records = await resolveTxt(`_kyte.${normalizedDomain}`);
+      const txtValues = records.flat();
+      if (txtValues.includes(domain.verificationToken)) {
+        await this.prisma.customDomain.update({
+          where: { id: domain.id },
+          data: { status: 'verified', verifiedAt: new Date() }
+        });
+        return { status: 'verified', message: 'Domain verified successfully!' };
+      }
+    } catch (err) {
+      console.error(`DNS lookup failed for ${normalizedDomain}`, err);
+    }
+
+    return { status: 'pending', error: 'DNS records not found or not propagated yet. Please add a TXT record for _kyte.' };
   }
 }

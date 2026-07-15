@@ -18,6 +18,13 @@ describe('ProjectsService - Environment Variables', () => {
       delete: jest.fn(),
       upsert: jest.fn(),
     },
+    customDomain: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn(async (args) => {
       if (Array.isArray(args)) {
         return Promise.all(args);
@@ -89,6 +96,52 @@ describe('ProjectsService - Environment Variables', () => {
       expect(upsertCall.create.encryptedValue).toBeDefined();
       expect(upsertCall.create.encryptedValue).not.toBe('sk_test_123'); // Should be encrypted
       expect(upsertCall.create.iv).toBeDefined();
+    });
+  });
+
+  describe('custom domains', () => {
+    it('normalizes a hostname before creating its verification record', async () => {
+      mockPrisma.project.findUnique.mockResolvedValue({ id: 'proj_1', userId: 'user_1' });
+      mockPrisma.customDomain.findUnique.mockResolvedValue(null);
+      mockPrisma.customDomain.create.mockImplementation(async ({ data }) => ({
+        id: 'domain_1',
+        ...data,
+        verifiedAt: null,
+        createdAt: new Date(),
+      }));
+
+      const domain = await service.addDomain('user_1', 'proj_1', 'HTTPS://WWW.Example.COM/');
+
+      expect(mockPrisma.customDomain.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ domainName: 'www.example.com', status: 'pending' }),
+      }));
+      expect(domain.dnsRecords.verification.name).toBe('_kyte.www.example.com');
+    });
+
+    it('rejects hostnames with a port or path', async () => {
+      mockPrisma.project.findUnique.mockResolvedValue({ id: 'proj_1', userId: 'user_1' });
+
+      await expect(service.addDomain('user_1', 'proj_1', 'example.com:3000')).rejects.toThrow('valid hostname');
+      expect(mockPrisma.customDomain.create).not.toHaveBeenCalled();
+    });
+
+    it('verifies local development hostnames without a public DNS lookup', async () => {
+      mockPrisma.project.findUnique.mockResolvedValue({ id: 'proj_1', userId: 'user_1' });
+      mockPrisma.customDomain.findUnique.mockResolvedValue({
+        id: 'domain_1',
+        projectId: 'proj_1',
+        domainName: 'demo.localhost',
+        verificationToken: 'kyte-verify=test',
+        status: 'pending',
+      });
+
+      const result = await service.verifyDomain('user_1', 'proj_1', 'demo.localhost');
+
+      expect(result.status).toBe('verified');
+      expect(mockPrisma.customDomain.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'domain_1' },
+        data: expect.objectContaining({ status: 'verified', verifiedAt: expect.any(Date) }),
+      }));
     });
   });
 });

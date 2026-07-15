@@ -24,10 +24,6 @@ export class ServeService {
   }
 
   async serveFile(projectSlug: string, path: string, res: Response, req: Request) {
-    const startTime = performance.now();
-    let prefix: string | null = null;
-    let projectId: string | null = null;
-
     const project = await this.prisma.project.findUnique({
       where: { subdomain: projectSlug },
       include: { activeDeploy: true },
@@ -37,21 +33,56 @@ export class ServeService {
       if (!project.activeDeploy) {
         throw new NotFoundException('Project has no active deployment');
       }
-      prefix = project.activeDeploy.s3Prefix;
-      projectId = project.id;
-    } else {
-      const deployment = await this.prisma.deployment.findUnique({
-        where: { id: projectSlug },
-      });
-      if (deployment) {
-        prefix = deployment.s3Prefix;
-        projectId = deployment.projectId;
+      return this.serveDeployment(project.activeDeploy.s3Prefix, project.id, path, res, req);
+    }
+
+    const deployment = await this.prisma.deployment.findUnique({ where: { id: projectSlug } });
+    if (!deployment) {
+      throw new NotFoundException('Project or deployment not found');
+    }
+    return this.serveDeployment(deployment.s3Prefix, deployment.projectId, path, res, req);
+  }
+
+  async serveCustomDomain(domainName: string, path: string, res: Response, req: Request) {
+    const normalizedDomain = domainName.trim().toLowerCase().replace(/\.$/, '');
+    const domain = await this.prisma.customDomain.findUnique({
+      where: { domainName: normalizedDomain },
+      include: { project: { include: { activeDeploy: true } } },
+    });
+
+    if (!domain || domain.status !== 'verified' || !domain.project.activeDeploy) {
+      throw new NotFoundException('Custom domain not found');
+    }
+
+    return this.serveDeployment(
+      domain.project.activeDeploy.s3Prefix,
+      domain.project.id,
+      path,
+      res,
+      req,
+    );
+  }
+
+  async serveHostname(host: string, path: string, res: Response, req: Request) {
+    const normalizedHost = host.trim().toLowerCase().replace(/\.$/, '');
+    const localProject = normalizedHost.match(/^([a-z0-9-]+)\.localhost$/);
+    if (localProject) {
+      return this.serveFile(localProject[1], path, res, req);
+    }
+
+    const baseDomain = (process.env.BASE_DOMAIN || '').trim().toLowerCase().replace(/\.$/, '');
+    if (baseDomain && normalizedHost.endsWith(`.${baseDomain}`)) {
+      const projectSlug = normalizedHost.slice(0, -(baseDomain.length + 1));
+      if (projectSlug && !projectSlug.includes('.')) {
+        return this.serveFile(projectSlug, path, res, req);
       }
     }
 
-    if (!prefix) {
-      throw new NotFoundException('Project or deployment not found');
-    }
+    return this.serveCustomDomain(normalizedHost, path, res, req);
+  }
+
+  private async serveDeployment(prefix: string, projectId: string, path: string, res: Response, req: Request) {
+    const startTime = performance.now();
 
     // Default to index.html if path is empty or a directory
     let targetPath = path || 'index.html';

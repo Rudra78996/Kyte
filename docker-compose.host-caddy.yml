@@ -1,0 +1,5 @@
+# Use this override on a VPS where Caddy is installed on the host and shared
+# by multiple applications. It disables Kyte's embedded Caddy container.
+services:
+  caddy:
+    profiles: ["embedded-caddy"]
