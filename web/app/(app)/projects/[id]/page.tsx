@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX } from 'lucide-react';
+import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX, ArrowUpRight, Radio, Server, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { ProjectAvatar } from '@/components/project-avatar';
 import { EnvironmentVariableEditor } from '@/components/environment-variable-editor';
@@ -70,6 +70,16 @@ interface ProjectMetrics {
   locations: { country: string; code: string; visitors: string; share: number }[]
 }
 
+function formatRelativeTime(value?: string) {
+  if (!value) return 'No deployments yet';
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
+  if (minutes < 1) return 'Deployed just now';
+  if (minutes < 60) return `Deployed ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Deployed ${hours}h ago`;
+  return `Deployed ${Math.floor(hours / 24)}d ago`;
+}
+
 export default function ProjectPage() {
   useEffect(() => { document.title = "Project | Kyte"; }, []);
   const params = useParams();
@@ -86,6 +96,7 @@ export default function ProjectPage() {
   const [logQuery, setLogQuery] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<string>("Overview");
+  const [overviewSeries, setOverviewSeries] = useState<'pageviews' | 'visitors'>('pageviews');
 
   const [settingsForm, setSettingsForm] = useState<SettingsForm>({
     name: '', branch: '', rootDirectory: '', buildCommand: '', outputDirectory: ''
@@ -254,6 +265,10 @@ export default function ProjectPage() {
 
   const currentDeployStatus = activeDeploy?.status || 'UNKNOWN';
   const metricLocations = metrics?.locations ?? [];
+  const overviewData = metrics?.trafficData ?? [];
+  const overviewMetric = overviewSeries === 'pageviews' ? metrics?.pageviews ?? 0 : metrics?.visitors ?? 0;
+  const overviewMetricLabel = overviewSeries === 'pageviews' ? 'Pageviews' : 'Visitors';
+  const deploymentHealth = metrics?.health ?? 100;
   return (
     <div className="min-h-full w-full bg-background text-foreground">
       {/* Top Navbar */}
@@ -333,24 +348,60 @@ export default function ProjectPage() {
         {/* Tab Content Wrapper */}
         <div className="mt-4 flex-1 flex flex-col min-h-0 w-full overflow-hidden">
           {activeTab === "Overview" && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-8">
-                <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-sm font-medium">Latest deployment</h2><p className="mt-1 text-xs text-muted-foreground">Current production build and source.</p></div>{renderStatusBadge(currentDeployStatus)}</div>
-                <div className="grid gap-6 p-5 sm:grid-cols-2"><div><p className="section-label">Source commit</p><p className="mt-2 flex items-center gap-2 font-mono text-sm"><GitCommitHorizontal className="size-3.5 text-zinc-400" />{activeDeploy?.commitSha?.slice(0, 7) || 'No commit'}</p><p className="mt-1 text-xs text-muted-foreground">{activeDeploy?.commitMessage || 'No commit message available'}</p></div><div><p className="section-label">Build details</p><p className="mt-2 text-sm text-zinc-300">{project.buildCommand || 'npm run build'}</p><p className="mt-1 text-xs text-muted-foreground">Output: {project.outputDirectory || 'dist'} · Runtime: Node.js</p></div></div>
-              </div>
-              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-4"><div className="border-b border-border px-5 py-4"><h2 className="text-sm font-medium">Deployment information</h2></div><div className="flex flex-col gap-4 p-5 text-sm"><div className="flex justify-between gap-4"><span className="text-muted-foreground">Framework</span><span>{project.preset || 'Other'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Branch</span><span className="font-mono text-xs">{project.branch || 'main'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Source</span><span>{activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual'}</span></div><div className="flex justify-between gap-4"><span className="text-muted-foreground">Region</span><span>Default</span></div></div></div>
-              <div className="overflow-hidden rounded-lg border border-border bg-card lg:col-span-12">
-                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
-                  <div className="flex items-center gap-4">
-                    <div className="flex size-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300"><Activity className="size-4" /></div>
+            <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
+              <section className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex flex-col gap-4 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border ${currentDeployStatus === 'SUCCESS' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : currentDeployStatus === 'FAILED' ? 'border-red-500/25 bg-red-500/10 text-red-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-300'}`}>
+                      <Radio className="size-4" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium">Production activity</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{metrics?.pageviews?.toLocaleString() || 0} pageviews · {metrics?.avgResponse || 0}ms average response · {metrics?.health || 100}% build success</p>
+                      <p className="section-label">Production pulse</p>
+                      <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">{currentDeployStatus === 'SUCCESS' ? 'Everything is serving normally' : currentDeployStatus === 'FAILED' ? 'Your latest deployment needs attention' : 'A deployment is moving through production'}</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatRelativeTime(activeDeploy?.deployedAt)} · {activeDeploy?.triggerSource === 'WEBHOOK' ? 'Triggered by a Git push' : 'Triggered manually'}</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab('Observability')}>View observability<ChevronRight data-icon="inline-end" /></Button>
+                  <div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setActiveTab('Deployments')}>Deployment history<ChevronRight data-icon="inline-end" /></Button>{renderStatusBadge(currentDeployStatus)}</div>
                 </div>
+                <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                  <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Availability</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{deploymentHealth}<span className="ml-1 text-sm font-medium text-muted-foreground">%</span></p><p className="mt-1 text-xs text-muted-foreground">Deployment success rate</p></button>
+                  <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Response time</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{metrics?.avgResponse || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">ms</span></p><p className="mt-1 text-xs text-muted-foreground">Average visitor response</p></button>
+                  <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Visitors</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{metrics?.visitors?.toLocaleString() || 0}</p><p className="mt-1 text-xs text-muted-foreground">Unique visitors this week</p></button>
+                </div>
+              </section>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+                <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-8">
+                  <div className="flex flex-col gap-4 border-b border-border px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div><p className="section-label">Production traffic</p><div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1"><h3 className="text-xl font-semibold tracking-[-0.03em]">{overviewMetric.toLocaleString()}</h3><span className="text-xs text-muted-foreground">{overviewMetricLabel} in the last 7 days</span></div></div>
+                    <div className="flex items-center rounded-md border border-border bg-muted/30 p-0.5" aria-label="Traffic chart metric"><button type="button" aria-pressed={overviewSeries === 'pageviews'} onClick={() => setOverviewSeries('pageviews')} className={`h-7 rounded px-2.5 text-xs transition-colors ${overviewSeries === 'pageviews' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Pageviews</button><button type="button" aria-pressed={overviewSeries === 'visitors'} onClick={() => setOverviewSeries('visitors')} className={`h-7 rounded px-2.5 text-xs transition-colors ${overviewSeries === 'visitors' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Visitors</button></div>
+                  </div>
+                  <div className="h-[290px] px-2 pb-2 pt-5 sm:h-[330px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={overviewData} margin={{ top: 8, right: 18, left: -14, bottom: 0 }}>
+                        <defs><linearGradient id="overview-traffic" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.2} /><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 4" />
+                        <XAxis axisLine={false} dataKey="day" tick={{ fill: '#71717a', fontSize: 11 }} tickLine={false} dy={8} />
+                        <YAxis axisLine={false} tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(value) => value >= 1000 ? `${Math.round(value / 1000)}k` : value} tickLine={false} />
+                        <Tooltip cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeDasharray: '3 3' }} contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 6, fontSize: 12 }} labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 4 }} formatter={(value) => [Number(value ?? 0).toLocaleString(), overviewMetricLabel]} />
+                        <Area type="monotone" dataKey={overviewSeries} stroke="hsl(var(--primary))" strokeWidth={2.25} fill="url(#overview-traffic)" activeDot={{ r: 4, fill: 'hsl(var(--primary))', stroke: 'hsl(var(--background))', strokeWidth: 2 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground"><span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-zinc-200" />Interactive 7-day traffic</span><button type="button" onClick={() => setActiveTab('Observability')} className="flex items-center gap-1 font-medium text-foreground hover:text-muted-foreground">Open observability <ChevronRight className="size-3.5" /></button></div>
+                </section>
+
+                <aside className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-4">
+                  <div className="border-b border-border px-5 py-4"><p className="section-label">Live deployment</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate font-mono text-sm text-foreground">{activeDeploy?.commitSha?.slice(0, 7) || 'No active commit'}</p><p className="mt-1 truncate text-xs text-muted-foreground">{activeDeploy?.commitMessage || 'Deploy a project to populate source details.'}</p></div><GitCommitHorizontal className="size-4 shrink-0 text-muted-foreground" /></div></div>
+                  <div className="divide-y divide-border">
+                    <div className="flex items-center gap-3 px-5 py-4"><div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"><GitBranch className="size-3.5" /></div><div className="min-w-0"><p className="text-xs text-muted-foreground">Production branch</p><p className="mt-1 truncate font-mono text-xs text-foreground">{project.branch || 'main'}</p></div></div>
+                    <div className="flex items-center gap-3 px-5 py-4"><div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"><Zap className="size-3.5" /></div><div className="min-w-0"><p className="text-xs text-muted-foreground">Build command</p><p className="mt-1 truncate font-mono text-xs text-foreground">{project.buildCommand || 'npm run build'}</p></div></div>
+                    <div className="flex items-center gap-3 px-5 py-4"><div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"><Server className="size-3.5" /></div><div className="min-w-0"><p className="text-xs text-muted-foreground">Output directory</p><p className="mt-1 truncate font-mono text-xs text-foreground">{project.outputDirectory || 'dist'}</p></div></div>
+                  </div>
+                  <div className="border-t border-border bg-muted/20 px-5 py-3"><Button variant="ghost" size="sm" className="-ml-2" onClick={() => setActiveTab('Deployments')}>Inspect deployment<ChevronRight data-icon="inline-end" /></Button></div>
+                </aside>
               </div>
+
             </div>
           )}
           {activeTab === "Observability" && (

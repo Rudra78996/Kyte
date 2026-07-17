@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+npm-debug.log
+yarn-error.log
+.git
+.env
+.env.local
+.env.*.local
+Dockerfile
+Dockerfile.*
+*.md
