@@ -112,7 +112,7 @@ export default function NewProjectPage() {
   async function fetchGithubRepos() {
     try {
       const data = await apiRequest("GET", "/auth/github/repos");
-      setRepos(data || []);
+      setRepos(data.repos || []);
     } catch (err) {
       console.error(err);
     } finally {
