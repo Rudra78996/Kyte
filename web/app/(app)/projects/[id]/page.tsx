@@ -288,7 +288,7 @@ export default function ProjectPage() {
           <Button onClick={triggerDeploy} variant="outline" size="sm">
             <RefreshCw data-icon="inline-start" /> Redeploy
           </Button>
-          <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
+          <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer">
             <Button size="sm">
               <ExternalLink data-icon="inline-start" /> Visit
             </Button>
@@ -308,9 +308,9 @@ export default function ProjectPage() {
                 <Badge variant="outline" className="font-mono font-normal">{project.preset || 'Other'}</Badge>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
                   <Globe className="size-3.5" />
-                  {project.subdomain}.localhost <ExternalLink className="size-3" />
+                  {project.subdomain}.{process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'} <ExternalLink className="size-3" />
                 </a>
                 <div className="flex items-center gap-2">
                   <GitBranch className="size-3.5" /> {project.branch || 'main'}
@@ -625,7 +625,7 @@ export default function ProjectPage() {
 
               <div className="flex shrink-0 items-center justify-between border-t border-border bg-zinc-900/50 px-4 py-2">
                 <span className="text-xs text-muted-foreground">Streaming · {activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual deployment'}</span>
-                <a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer">
+                <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer">
                   <Button variant="ghost" size="sm">
                     Visit deployment <ExternalLink data-icon="inline-end" />
                   </Button>
@@ -758,7 +758,7 @@ export default function ProjectPage() {
               <div><h2 className="text-lg font-semibold tracking-[-0.02em]">Domains</h2><p className="mt-1 text-sm text-muted-foreground">Manage where people can reach this project.</p></div>
               <div className="overflow-hidden rounded-lg border border-border bg-card">
                 <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="text-sm font-medium">Production domain</h3><p className="mt-1 text-xs text-muted-foreground">The default URL for your live deployment.</p></div><Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Active</Badge></div>
-                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.localhost</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`http://${project.subdomain}.localhost`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.{process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
               </div>
               <DomainManager projectId={projectId} />
             </div>

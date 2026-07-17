@@ -681,7 +681,7 @@ export default function NewProjectPage() {
               </div>
               <div className="pointer-events-none relative aspect-[16/10] w-full overflow-hidden">
                 <iframe 
-                  src={`http://${project?.subdomain}.localhost`} 
+                  src={`https://${project?.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} 
                   className="pointer-events-none absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-50 border-none"
                   scrolling="no"
                   tabIndex={-1}
@@ -696,7 +696,7 @@ export default function NewProjectPage() {
               <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Next steps</h3>
               
               <div className="flex flex-col divide-y divide-zinc-800/70">
-                <a href={`http://${project?.subdomain}.localhost`} target="_blank" rel="noreferrer" className="group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center justify-between rounded-md px-2 py-2.5 transition-colors hover:bg-zinc-900/70">
+                <a href={`https://${project?.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer" className="group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center justify-between rounded-md px-2 py-2.5 transition-colors hover:bg-zinc-900/70">
                   <div className="flex items-center gap-3">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/80 text-zinc-400 transition-colors group-hover:border-zinc-700 group-hover:text-zinc-200">
                       <ExternalLink className="size-4" />
