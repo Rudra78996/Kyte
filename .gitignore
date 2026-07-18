@@ -11,3 +11,4 @@ pnpm-debug.log*
 docker-compose.override.yml
 .agents
 TODO.md
+Changes.md

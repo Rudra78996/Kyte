@@ -82,7 +82,7 @@ export function NavUser() {
     };
     
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000);
+    const interval = setInterval(fetchNotifications, 60_000);
     return () => clearInterval(interval);
   }, [isLoaded, user, apiRequest]);
 
