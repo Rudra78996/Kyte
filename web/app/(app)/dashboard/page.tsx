@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ProjectAvatar } from "@/components/project-avatar";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { siteHostname } from "@/lib/site-url";
 
 type DeploymentStatus = "QUEUED" | "BUILDING" | "UPLOADING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "CANCELED";
 
@@ -169,7 +170,7 @@ function ProjectRow({ project }: { project: ProjectWithDeployment }) {
       <ProjectAvatar projectId={project.id} size={40} className="rounded-md shadow-sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2"><p className="truncate text-base font-medium">{project.name}</p><Badge variant="outline" className="font-normal">{project.preset || "Other"}</Badge></div>
-        <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3 text-orange-400" />{project.branch || "main"}</span><span className="truncate">{project.subdomain}.{process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}</span></div>
+        <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3 text-orange-400" />{project.branch || "main"}</span><span className="truncate">{siteHostname(project.subdomain)}</span></div>
       </div>
     </div>
     <div className="flex items-center gap-4 sm:justify-end"><StatusBadge status={deployment?.status} /><ChevronRight className="size-4 text-muted-foreground" /></div>

@@ -4,6 +4,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import type { Response, Request } from 'express';
 import * as mime from 'mime-types';
 import * as geoip from 'geoip-lite';
+import { requireEnvironment } from '../common/runtime-config';
 
 @Injectable()
 export class ServeService {
@@ -11,13 +12,13 @@ export class ServeService {
   private bucket: string;
 
   constructor(private prisma: PrismaService) {
-    this.bucket = process.env.MINIO_BUCKET || 'deployly-projects';
+    this.bucket = requireEnvironment('MINIO_BUCKET');
     this.s3 = new S3Client({
-      endpoint: process.env.MINIO_ENDPOINT || 'http://localhost:9000',
+      endpoint: requireEnvironment('MINIO_ENDPOINT'),
       region: 'us-east-1',
       credentials: {
-        accessKeyId: process.env.MINIO_ACCESS_KEY || 'admin',
-        secretAccessKey: process.env.MINIO_SECRET_KEY || 'password',
+        accessKeyId: requireEnvironment('MINIO_ACCESS_KEY'),
+        secretAccessKey: requireEnvironment('MINIO_SECRET_KEY'),
       },
       forcePathStyle: true,
     });
@@ -65,14 +66,19 @@ export class ServeService {
 
   async serveHostname(host: string, path: string, res: Response, req: Request) {
     const normalizedHost = host.trim().toLowerCase().replace(/\.$/, '');
-    const localProject = normalizedHost.match(/^([a-z0-9-]+)\.localhost$/);
+    const localProject = normalizedHost.match(
+      /^([a-z0-9-]+)\.sites\.localhost$/,
+    );
     if (localProject) {
       return this.serveFile(localProject[1], path, res, req);
     }
 
-    const baseDomain = (process.env.BASE_DOMAIN || '').trim().toLowerCase().replace(/\.$/, '');
-    if (baseDomain && normalizedHost.endsWith(`.${baseDomain}`)) {
-      const projectSlug = normalizedHost.slice(0, -(baseDomain.length + 1));
+    const sitesDomain = (process.env.SITES_DOMAIN || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.$/, '');
+    if (sitesDomain && normalizedHost.endsWith(`.${sitesDomain}`)) {
+      const projectSlug = normalizedHost.slice(0, -(sitesDomain.length + 1));
       if (projectSlug && !projectSlug.includes('.')) {
         return this.serveFile(projectSlug, path, res, req);
       }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProjectAvatar } from "@/components/project-avatar";
+import { siteUrl } from "@/lib/site-url";
 
 type Status = "QUEUED" | "BUILDING" | "UPLOADING" | "SUCCESS" | "FAILED" | "TIMEOUT" | "CANCELED";
 type Project = { id: string; name: string; subdomain: string; repoUrl: string; preset?: string | null };
@@ -65,7 +66,7 @@ export default function DeploymentsPage() {
   const redeploy = async (row: DeploymentRow) => {
     setDeployingId(row.id);
     try {
-      await apiRequest("POST", `/projects/${row.projectId}/deployments`, { repoUrl: row.project.repoUrl, branch: row.branch, commitSha: row.commitSha, commitMessage: row.commitMessage || undefined, trigger: "manual" });
+      await apiRequest("POST", `/projects/${row.projectId}/deployments`, { commitSha: row.commitSha, commitMessage: row.commitMessage || undefined });
       await loadDeployments();
     } finally {
       setDeployingId(null);
@@ -127,7 +128,7 @@ function DeploymentItem({ row, redeploy, deploying }: { row: DeploymentRow; rede
     <DeploymentStatus status={row.status} duration={duration} />
     <Link href={`/projects/${row.projectId}`} className="hidden items-center gap-2 text-sm text-zinc-300 hover:text-white md:flex"><ProjectAvatar projectId={row.projectId} size={24} className="rounded-md border border-zinc-800 bg-zinc-900" /><span className="truncate">{row.project.name}</span></Link>
     <div className="hidden items-center gap-4 text-xs text-muted-foreground md:flex"><span className="flex items-center gap-2"><GitCommitHorizontal className="size-3" />{row.commitSha.slice(0, 7)}</span><span className="flex items-center gap-2"><GitBranch className="size-3" />{row.branch}</span><Badge variant="outline" className="font-normal">{row.triggerSource === "WEBHOOK" ? "Git push" : "Manual"}</Badge></div>
-    <div className="flex items-center justify-between gap-2 md:justify-end"><span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(row.deployedAt)}</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-xs" title="View project" render={<Link href={`/projects/${row.projectId}`} />}><FileText /></Button><Button variant="ghost" size="icon-xs" title="Redeploy" disabled={deploying} onClick={() => void redeploy(row)}>{deploying ? <RefreshCw className="animate-spin" /> : <RefreshCw />}</Button>{row.status === "SUCCESS" && <Button variant="ghost" size="icon-xs" title="Visit deployment" render={<a href={`https://${row.project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer" />}><ExternalLink /></Button>}</div></div>
+    <div className="flex items-center justify-between gap-2 md:justify-end"><span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(row.deployedAt)}</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-xs" title="View project" render={<Link href={`/projects/${row.projectId}`} />}><FileText /></Button><Button variant="ghost" size="icon-xs" title="Redeploy" disabled={deploying} onClick={() => void redeploy(row)}>{deploying ? <RefreshCw className="animate-spin" /> : <RefreshCw />}</Button>{row.status === "SUCCESS" && <Button variant="ghost" size="icon-xs" title="Visit deployment" render={<a href={siteUrl(row.project.subdomain)} target="_blank" rel="noreferrer" />}><ExternalLink /></Button>}</div></div>
   </div>;
 }
 

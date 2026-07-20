@@ -8,6 +8,20 @@
 
 # Local dashboard and API entry point.
 http://localhost {
+	header {
+		-Server
+		-X-Powered-By
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+	}
+
+	@deployment_api path /api/serve /api/serve/*
+	handle @deployment_api {
+		respond 404
+	}
+
 	handle /api/* {
 		uri strip_prefix /api
 		reverse_proxy api:3000
@@ -18,14 +32,40 @@ http://localhost {
 	}
 }
 
-# Local project URLs, such as project-name.localhost, are served over HTTP.
-http://*.localhost {
+# Local project URLs deliberately use a different parent host from the dashboard.
+http://*.sites.localhost {
+	header {
+		-Server
+		-X-Powered-By
+		-Set-Cookie
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
 	rewrite * /serve/host/{host}{uri}
-	reverse_proxy api:3000
+	reverse_proxy api:3000 {
+		header_up -Cookie
+		header_up -Authorization
+	}
 }
 
 # Kyte's public dashboard and API. Caddy provisions and renews this certificate.
 {$BASE_DOMAIN} {
+	header {
+		-Server
+		-X-Powered-By
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+	}
+
+	@deployment_api path /api/serve /api/serve/*
+	handle @deployment_api {
+		respond 404
+	}
+
 	handle /api/* {
 		uri strip_prefix /api
 		reverse_proxy api:3000
@@ -43,6 +83,17 @@ https:// {
 		on_demand
 	}
 
+	header {
+		-Server
+		-X-Powered-By
+		-Set-Cookie
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
 	rewrite * /serve/host/{host}{uri}
-	reverse_proxy api:3000
+	reverse_proxy api:3000 {
+		header_up -Cookie
+		header_up -Authorization
+	}
 }

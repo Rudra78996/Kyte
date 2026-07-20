@@ -1,97 +1,159 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+} from '@nestjs/common';
+import type Redis from 'ioredis';
+import {
+  DeploymentsService,
+  MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS,
+  WebhookDeploymentQuotaExceededError,
+} from '../deployments/deployments.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+
+export const WEBHOOK_REDIS = Symbol('WEBHOOK_REDIS');
+const DELIVERY_TTL_SECONDS = 24 * 60 * 60;
+const QUOTA_NOTICE_TTL_SECONDS = 24 * 60 * 60;
+
+interface GitHubPushPayload {
+  ref?: unknown;
+  after?: unknown;
+  deleted?: unknown;
+  head_commit?: { message?: unknown } | null;
+  repository?: {
+    id?: unknown;
+    full_name?: unknown;
+  };
+}
 
 @Injectable()
-export class WebhooksService {
+export class WebhooksService implements OnModuleDestroy {
   private readonly logger = new Logger(WebhooksService.name);
-  
-  // A simple in-memory set to prevent processing the same delivery multiple times
-  private processedDeliveries = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue('builds') private readonly queue: Queue,
+    private readonly deployments: DeploymentsService,
+    @Inject(WEBHOOK_REDIS) private readonly redis: Redis,
   ) {}
 
-  async handlePushEvent(deliveryId: string, payload: any) {
-    if (this.processedDeliveries.has(deliveryId)) {
-      this.logger.log(`Ignoring duplicate delivery: ${deliveryId}`);
-      return;
-    }
-    
-    this.processedDeliveries.add(deliveryId);
-    
-    // Cleanup old deliveries to prevent memory leak (e.g. keep max 1000)
-    if (this.processedDeliveries.size > 1000) {
-      const iterator = this.processedDeliveries.values();
-      this.processedDeliveries.delete(iterator.next().value);
-    }
+  async onModuleDestroy() {
+    await this.redis.quit();
+  }
 
-    const repoUrl = payload.repository?.html_url || payload.repository?.clone_url;
-    const ref = payload.ref; // e.g. refs/heads/main
-    
-    if (!repoUrl || !ref) {
-      this.logger.warn('Push event missing repoUrl or ref');
+  async handlePushEvent(deliveryId: string, payload: unknown) {
+    const firstAttempt = await this.redis.set(
+      `github:webhook-delivery:${deliveryId}`,
+      '1',
+      'EX',
+      DELIVERY_TTL_SECONDS,
+      'NX',
+    );
+    if (firstAttempt !== 'OK') {
+      this.logger.log('Ignoring duplicate GitHub delivery');
       return;
     }
 
-    // Convert ref to branch name (e.g. refs/heads/main -> main)
-    const branch = ref.replace('refs/heads/', '');
-    const commitSha = payload.after; // the new commit hash
-    const commitMessage = payload.head_commit?.message;
-
-    if (payload.deleted || !commitSha || commitSha === '0000000000000000000000000000000000000000') {
-      this.logger.log(`Ignoring branch deletion for ${repoUrl}#${branch}`);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new BadRequestException('Malformed GitHub push payload');
+    }
+    const push = payload as GitHubPushPayload;
+    const repositoryId = push.repository?.id;
+    const repositoryName = push.repository?.full_name;
+    const ref = push.ref;
+    const commitSha = push.after;
+    if (
+      (typeof repositoryId !== 'number' &&
+        !(
+          typeof repositoryId === 'string' &&
+          /^[1-9][0-9]{0,19}$/.test(repositoryId)
+        )) ||
+      (typeof repositoryId === 'number' &&
+        (!Number.isSafeInteger(repositoryId) || repositoryId <= 0)) ||
+      typeof repositoryName !== 'string' ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repositoryName) ||
+      typeof ref !== 'string' ||
+      ref.length > 220
+    ) {
+      throw new BadRequestException('Malformed GitHub push payload');
+    }
+    if (!ref.startsWith('refs/heads/')) {
+      this.logger.log('Ignoring non-branch GitHub ref');
       return;
     }
-
-    // Find all projects that use this repo URL and branch
-    // Because repo URLs can end in .git or not, we might need a looser match
-    // But for MVP exact match is fine or basic cleanup
-    const cleanRepoUrl = repoUrl.replace(/\.git$/, '').toLowerCase();
+    const branch = ref.slice('refs/heads/'.length);
+    if (
+      push.deleted === true ||
+      typeof commitSha !== 'string' ||
+      !/^[a-fA-F0-9]{40}$/.test(commitSha) ||
+      commitSha === '0'.repeat(40)
+    ) {
+      this.logger.log('Ignoring branch deletion or invalid commit');
+      return;
+    }
+    const commitMessage =
+      typeof push.head_commit?.message === 'string'
+        ? push.head_commit.message.slice(0, 500)
+        : undefined;
 
     const projects = await this.prisma.project.findMany({
       where: {
-        repoUrl: {
-          contains: cleanRepoUrl,
-          mode: 'insensitive'
-        },
-        branch: branch // only match projects deployed from this branch
-      }
+        githubRepositoryId: String(repositoryId),
+        webhookId: { not: null },
+        branch,
+      },
     });
-
-    if (projects.length === 0) {
-      this.logger.log(`No projects found for repo: ${repoUrl} and branch: ${branch}`);
-      return;
-    }
-    
     for (const project of projects) {
-      // Create deployment record
-      const deployment = await this.prisma.deployment.create({
-        data: {
-          projectId: project.id,
-          repoUrl: project.repoUrl,
-          branch: branch,
-          commitSha: commitSha,
-          commitMessage: commitMessage,
-          deployedBy: project.userId, // triggered by webhook but owned by this user
-          status: 'QUEUED',
-          triggerSource: 'WEBHOOK',
-          s3Prefix: `${project.id}/${Date.now()}`,
-        },
-      });
-
-      this.logger.log(`Created webhook deployment ${deployment.id} for project ${project.id}`);
-
-      // Enqueue job
-      await this.queue.add('deploy', {
-        deploymentId: deployment.id,
-        repoUrl: deployment.repoUrl,
-        branch: deployment.branch,
-        commitSha: deployment.commitSha,
-      });
+      try {
+        await this.deployments.createFromWebhook(
+          project,
+          commitSha.toLowerCase(),
+          commitMessage,
+        );
+      } catch (error) {
+        if (error instanceof WebhookDeploymentQuotaExceededError) {
+          this.logger.warn(
+            `Skipping webhook deployment for project ${project.id}: 24-hour webhook build quota reached`,
+          );
+          try {
+            const shouldNotify = await this.redis.set(
+              `github:webhook-quota-notice:${project.userId}`,
+              '1',
+              'EX',
+              QUOTA_NOTICE_TTL_SECONDS,
+              'NX',
+            );
+            if (shouldNotify === 'OK') {
+              await this.prisma.notification.create({
+                data: {
+                  userId: project.userId,
+                  title: 'Webhook build limit reached',
+                  message:
+                    `Automatic deployments are limited to ${MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS} builds per 24 hours. ` +
+                    'Manual deployments remain available.',
+                  type: 'WARNING',
+                },
+              });
+            }
+          } catch {
+            this.logger.error(
+              `Failed to record webhook quota notification for user ${project.userId}`,
+            );
+          }
+          continue;
+        }
+        if (
+          error instanceof BadRequestException &&
+          error.message.includes('Too many active deployments')
+        ) {
+          this.logger.warn(
+            `Skipping webhook deployment for project ${project.id}: active deployment limit reached`,
+          );
+          continue;
+        }
+        throw error;
+      }
     }
   }
 }

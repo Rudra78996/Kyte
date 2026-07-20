@@ -1,25 +1,50 @@
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS nsjail-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git build-essential flex bison \
     libprotobuf-dev protobuf-compiler \
     libnl-3-dev libnl-route-3-dev pkg-config \
-    python3 iptables ca-certificates && \
+    ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-RUN git clone -b 3.6 https://github.com/google/nsjail.git /tmp/nsjail && \
+ARG NSJAIL_COMMIT=f78475530b46d0186111a9096b30725f816b55fe
+RUN mkdir /tmp/nsjail && \
+    git -C /tmp/nsjail init && \
+    git -C /tmp/nsjail remote add origin https://github.com/google/nsjail.git && \
+    git -C /tmp/nsjail fetch --depth 1 origin "$NSJAIL_COMMIT" && \
+    git -C /tmp/nsjail checkout --detach FETCH_HEAD && \
+    test "$(git -C /tmp/nsjail rev-parse HEAD)" = "$NSJAIL_COMMIT" && \
     cd /tmp/nsjail && \
-    make && \
-    cp nsjail /usr/local/bin/nsjail && \
-    rm -rf /tmp/nsjail
+    make
+
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS app-build
 
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-
 COPY . .
 RUN npx prisma generate
 RUN npm run build
+
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential python3 iptables ca-certificates \
+    libprotobuf32 libnl-3-200 libnl-route-3-200 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=nsjail-build /tmp/nsjail/nsjail /usr/local/bin/nsjail
+WORKDIR /app
+COPY package*.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev && \
+    npx prisma generate && \
+    npm cache clean --force
+COPY --from=app-build /app/dist ./dist
+COPY start-worker.sh ./start-worker.sh
+
+ARG RELEASE_VERSION=local
+LABEL org.opencontainers.image.revision=$RELEASE_VERSION
 
 EXPOSE 3001
 CMD ["/app/start-worker.sh"]

@@ -1,4 +1,4 @@
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import {
   Controller,
   Post,
@@ -15,6 +15,8 @@ import { DeploymentsService } from './deployments.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { PaginationDto } from '../common/request.dto';
+import { ResourceIdPipe } from '../common/security-validation.pipe';
 
 @Controller('projects/:projectId/deployments')
 @UseGuards(JwtAuthGuard)
@@ -24,7 +26,7 @@ export class DeploymentsController {
   @Post()
   async create(
     @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
+    @Param('projectId', ResourceIdPipe) projectId: string,
     @Body() dto: CreateDeploymentDto,
   ) {
     return this.deploymentsService.create(userId, projectId, dto);
@@ -33,23 +35,22 @@ export class DeploymentsController {
   @Get()
   async findAll(
     @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string,
+    @Param('projectId', ResourceIdPipe) projectId: string,
+    @Query() query: PaginationDto,
   ) {
     return this.deploymentsService.findAll(
       userId,
       projectId,
-      skip ? parseInt(skip) : 0,
-      take ? parseInt(take) : 20,
+      query.skip,
+      query.take,
     );
   }
 
   @Get(':deploymentId')
   async findOne(
     @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
-    @Param('deploymentId') deploymentId: string,
+    @Param('projectId', ResourceIdPipe) projectId: string,
+    @Param('deploymentId', ResourceIdPipe) deploymentId: string,
   ) {
     return this.deploymentsService.findOne(userId, projectId, deploymentId);
   }
@@ -57,18 +58,18 @@ export class DeploymentsController {
   @Post(':deploymentId/rollback')
   async rollback(
     @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
-    @Param('deploymentId') deploymentId: string,
+    @Param('projectId', ResourceIdPipe) projectId: string,
+    @Param('deploymentId', ResourceIdPipe) deploymentId: string,
   ) {
     return this.deploymentsService.rollback(userId, projectId, deploymentId);
   }
 
-  @SkipThrottle()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Sse(':deploymentId/logs')
   async streamLogs(
     @CurrentUser('id') userId: string,
-    @Param('projectId') projectId: string,
-    @Param('deploymentId') deploymentId: string,
+    @Param('projectId', ResourceIdPipe) projectId: string,
+    @Param('deploymentId', ResourceIdPipe) deploymentId: string,
   ): Promise<Observable<MessageEvent>> {
     return this.deploymentsService.streamLogs(userId, projectId, deploymentId);
   }

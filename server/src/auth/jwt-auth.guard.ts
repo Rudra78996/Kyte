@@ -4,10 +4,11 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createClerkClient, verifyToken } from '@clerk/backend';
-import { Request } from 'express';
+import { createClerkClient } from '@clerk/backend';
+import type { Request as ExpressRequest } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from './auth.types';
+import { getClerkVerificationOptions } from './clerk-auth.config';
 
 /**
  * TTL for the in-process user-lookup cache. Clerk session JWTs are short-lived
@@ -31,35 +32,48 @@ export class JwtAuthGuard implements CanActivate {
    * on every authenticated request for returning users.
    */
   private userCache = new Map<string, CacheEntry>();
+  private readonly verificationOptions;
 
   constructor(private readonly prisma: PrismaService) {
+    this.verificationOptions = getClerkVerificationOptions();
     this.clerkClient = createClerkClient({
-      secretKey: process.env.CLERK_SECRET_KEY,
+      secretKey: this.verificationOptions.secretKey,
+      publishableKey: this.verificationOptions.publishableKey,
     });
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
       .switchToHttp()
-      .getRequest<Request & { user?: AuthenticatedUser }>();
-    let token = '';
-    const header = request.headers.authorization;
-    if (header) {
-      const [scheme, t] = header.split(' ');
-      if (scheme === 'Bearer' && t) {
-        token = t;
-      }
-    } else if (request.query.token && typeof request.query.token === 'string') {
-      token = request.query.token;
-    }
-
-    if (!token) {
-      throw new UnauthorizedException('Missing authorization token');
-    }
+      .getRequest<ExpressRequest & { user?: AuthenticatedUser }>();
 
     try {
-      const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-      const clerkId = payload.sub;
+      const host = request.get('host');
+      if (!host) throw new UnauthorizedException('Missing request host');
+      const url = `${request.protocol}://${host}${request.originalUrl}`;
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(request.headers)) {
+        if (Array.isArray(value)) {
+          value.forEach((item) => headers.append(name, item));
+        } else if (value !== undefined) {
+          headers.set(name, value);
+        }
+      }
+      const requestState = await this.clerkClient.authenticateRequest(
+        new globalThis.Request(url, {
+          method: request.method,
+          headers,
+        }),
+        {
+          authorizedParties: this.verificationOptions.authorizedParties,
+          acceptsToken: 'session_token',
+        },
+      );
+      if (!requestState.isAuthenticated) {
+        throw new UnauthorizedException('Invalid or expired session');
+      }
+      const { userId: clerkId } = requestState.toAuth();
+      if (!clerkId) throw new UnauthorizedException('Invalid Clerk user');
 
       // Check cache first — returning users skip the DB entirely.
       const cached = this.userCache.get(clerkId);
@@ -73,14 +87,22 @@ export class JwtAuthGuard implements CanActivate {
       if (!user) {
         // Fetch user details from Clerk
         const clerkUser = await this.clerkClient.users.getUser(clerkId);
-        const email =
-          clerkUser.emailAddresses.find(
-            (e) => e.id === clerkUser.primaryEmailAddressId,
-          )?.emailAddress || '';
-          
+        const primaryEmail = clerkUser.emailAddresses.find(
+          (email) => email.id === clerkUser.primaryEmailAddressId,
+        );
+        if (
+          !primaryEmail ||
+          primaryEmail.verification?.status !== 'verified'
+        ) {
+          throw new UnauthorizedException(
+            'A verified primary email is required',
+          );
+        }
+        const email = primaryEmail.emailAddress.toLowerCase();
+
         // Try to link existing user by email
         user = await this.prisma.user.findUnique({ where: { email } });
-        
+
         if (user) {
           user = await this.prisma.user.update({
             where: { id: user.id },
@@ -97,7 +119,11 @@ export class JwtAuthGuard implements CanActivate {
         }
       }
 
-      const authUser: AuthenticatedUser = { id: user.id, email: user.email, clerkId };
+      const authUser: AuthenticatedUser = {
+        id: user.id,
+        email: user.email,
+        clerkId,
+      };
 
       // Populate cache for subsequent requests.
       this.userCache.set(clerkId, {
@@ -107,8 +133,7 @@ export class JwtAuthGuard implements CanActivate {
 
       request.user = authUser;
       return true;
-    } catch (e) {
-      console.error('JwtAuthGuard Error:', e);
+    } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

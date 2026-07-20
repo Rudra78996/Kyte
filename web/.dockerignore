@@ -4,6 +4,9 @@ out
 npm-debug.log
 yarn-error.log
 .git
+.env
+.env.*
+!.env.example
 Dockerfile
 Dockerfile.*
 *.md

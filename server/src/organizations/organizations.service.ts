@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -65,7 +70,7 @@ export class OrganizationsService {
     const member = await this.prisma.organizationMember.findUnique({
       where: { organizationId_userId: { userId, organizationId: orgId } },
     });
-    if (!member) throw new BadRequestException('Not a member of this organization');
+    if (!member) throw new NotFoundException('Organization not found');
 
     const deployments = await this.prisma.deployment.findMany({
       where: { project: { organizationId: orgId } },

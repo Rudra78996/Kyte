@@ -1,10 +1,10 @@
 import { Controller, Get, Query, Res, HttpStatus } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { PrismaService } from './prisma/prisma.service';
 
 @Controller('api/caddy')
-@SkipThrottle()
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
 export class CaddyController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -25,9 +25,12 @@ export class CaddyController {
       return res.status(HttpStatus.OK).send("Allowed");
     }
 
-    const baseDomain = (process.env.BASE_DOMAIN || '').trim().toLowerCase().replace(/\.$/, '');
-    if (baseDomain && normalizedDomain.endsWith(`.${baseDomain}`)) {
-      const projectSlug = normalizedDomain.slice(0, -(baseDomain.length + 1));
+    const sitesDomain = (process.env.SITES_DOMAIN || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.$/, '');
+    if (sitesDomain && normalizedDomain.endsWith(`.${sitesDomain}`)) {
+      const projectSlug = normalizedDomain.slice(0, -(sitesDomain.length + 1));
       if (projectSlug && !projectSlug.includes('.')) {
         const project = await this.prisma.project.findUnique({
           where: { subdomain: projectSlug },

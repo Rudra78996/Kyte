@@ -38,7 +38,7 @@ model OrganizationMember {
   id             String       @id @default(cuid())
   organizationId String
   userId         String
-  role           String       @default("MEMBER") // OWNER, ADMIN, MEMBER
+  role           OrganizationRole @default(MEMBER)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
@@ -46,7 +46,14 @@ model OrganizationMember {
   @@unique([organizationId, userId])
 }
 
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model Project {
+  /// A partial unique database index permits only one non-null webhookId per user.
   id               String             @id @default(cuid())
   name             String
   description      String?
@@ -64,6 +71,7 @@ model Project {
   customDomains    CustomDomain[]     @relation("ProjectCustomDomains")
   githubConnection GitHubConnection?
   webhookId        String?
+  githubRepositoryId String?
   preset           String?            @default("React")
   rootDirectory    String?            @default("./")
   buildCommand     String?            @default("npm run build")
@@ -71,6 +79,8 @@ model Project {
   branch           String?            @default("main")
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
+
+  @@index([githubRepositoryId, branch])
 }
 
 model Deployment {
@@ -123,6 +133,8 @@ model GitHubConnection {
   githubUserId         String    @unique
   githubUsername       String
   accessTokenEncrypted String?
+  tokenIv              String?
+  tokenAuthTag         String?
   scopes               String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -174,6 +186,7 @@ model EnvironmentVariable {
   key            String
   encryptedValue String
   iv             String
+  authTag        String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

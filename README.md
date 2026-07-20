@@ -1,10 +1,11 @@
-# Deployly
+# Kyte
 
-Phase 0 foundation for a frontend hosting platform with:
+A self-hosted frontend deployment platform with:
 
 - `server/` - NestJS API (TypeScript)
 - `web/` - Next.js dashboard (TypeScript)
-- `docker-compose.yml` - local infrastructure and app services
+- `infra/` - pinned infrastructure image and least-privilege policy assets
+- `docker-compose.yml` - local infrastructure and application services
 
 ## Local setup
 
@@ -15,8 +16,7 @@ Phase 0 foundation for a frontend hosting platform with:
 
 ## Service URLs (default)
 
-- Nginx gateway: `http://localhost:80`
+- Caddy gateway: `http://localhost:80`
 - API health: `http://localhost:80/api/health`
 - Web app: `http://localhost:3002`
 - MinIO console: `http://localhost:9001`
-

@@ -2,11 +2,13 @@ import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } fr
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as mime from 'mime-types';
+import { createReadStream } from 'node:fs';
+import { requireEnvironment } from '../common/runtime-config';
 
-const endpoint = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
-const accessKeyId = process.env.MINIO_ACCESS_KEY || 'admin';
-const secretAccessKey = process.env.MINIO_SECRET_KEY || 'password';
-const bucket = process.env.MINIO_BUCKET || 'deployly-projects';
+const endpoint = requireEnvironment('MINIO_ENDPOINT');
+const accessKeyId = requireEnvironment('MINIO_ACCESS_KEY');
+const secretAccessKey = requireEnvironment('MINIO_SECRET_KEY');
+const bucket = requireEnvironment('MINIO_BUCKET');
 
 const s3 = new S3Client({
   endpoint,
@@ -28,7 +30,15 @@ export async function ensureBucket() {
   }
 }
 
-async function* getFiles(dir: string): AsyncGenerator<string> {
+export const MAX_UPLOAD_FILES = 10_000;
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+interface UploadFile {
+  path: string;
+  size: number;
+}
+
+async function* getFiles(dir: string): AsyncGenerator<UploadFile> {
   const dirents = await fs.readdir(dir, { withFileTypes: true });
   for (const dirent of dirents) {
     const res = path.resolve(dir, dirent.name);
@@ -37,36 +47,51 @@ async function* getFiles(dir: string): AsyncGenerator<string> {
     }
     if (dirent.isDirectory()) {
       yield* getFiles(res);
-    } else {
-      yield res;
+    } else if (dirent.isFile()) {
+      const fileStat = await fs.lstat(res);
+      yield { path: res, size: fileStat.size };
     }
   }
 }
 
 export async function uploadDirectory(prefix: string, dir: string, onProgress?: (msg: string) => void) {
-  await ensureBucket();
-  
   if (!(await fs.pathExists(dir))) {
     throw new Error(`Directory ${dir} does not exist to upload`);
   }
 
-  let count = 0;
+  const files: UploadFile[] = [];
+  let totalBytes = 0;
   for await (const file of getFiles(dir)) {
-    const relativePath = path.relative(dir, file);
+    files.push(file);
+    totalBytes += file.size;
+    if (files.length > MAX_UPLOAD_FILES) {
+      throw new Error(
+        `Deployment output exceeds the ${MAX_UPLOAD_FILES.toLocaleString()} file limit`,
+      );
+    }
+    if (totalBytes > MAX_UPLOAD_BYTES) {
+      throw new Error('Deployment output exceeds the 100 MB upload limit');
+    }
+  }
+
+  await ensureBucket();
+  for (const file of files) {
+    const relativePath = path.relative(dir, file.path);
     const key = `${prefix}/${relativePath}`.replace(/\\/g, '/'); // Normalize windows paths just in case
-    const contentType = mime.lookup(file) || 'application/octet-stream';
-    const body = await fs.readFile(file);
+    const contentType = mime.lookup(file.path) || 'application/octet-stream';
 
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
       Key: key,
-      Body: body,
+      Body: createReadStream(file.path),
+      ContentLength: file.size,
       ContentType: contentType,
     }));
-    count++;
   }
   
   if (onProgress) {
-    onProgress(`Uploaded ${count} files to ${bucket}/${prefix}`);
+    onProgress(
+      `Uploaded ${files.length} files (${totalBytes} bytes) to ${bucket}/${prefix}`,
+    );
   }
 }
