@@ -398,7 +398,7 @@ const TextAnimateBase = ({
           className: cn("whitespace-pre-wrap", className),
           viewport: { once },
           ...props,
-        } as any,
+        } as React.ComponentProps<ReturnType<typeof getMotionComponent>>,
         segments.map((segment, i) => (
           <motion.span
             key={`${by}-${segment}-${i}`}
@@ -420,7 +420,6 @@ const TextAnimateBase = ({
 
 // Export the memoized version
 export const TextAnimate = memo(TextAnimateBase);
-
 
 
 

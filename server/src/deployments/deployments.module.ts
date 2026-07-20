@@ -17,5 +17,6 @@ import { BullModule } from '@nestjs/bullmq';
   ],
   providers: [DeploymentsService],
   controllers: [DeploymentsController],
+  exports: [DeploymentsService],
 })
 export class DeploymentsModule {}

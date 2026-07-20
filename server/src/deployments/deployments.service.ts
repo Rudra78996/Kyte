@@ -1,20 +1,45 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  MessageEvent,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { DeploymentTrigger, Prisma, Project } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateDeploymentDto } from './dto/deployment.dto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
-import { MessageEvent } from '@nestjs/common';
 import Redis from 'ioredis';
+import { randomBytes } from 'node:crypto';
+import { requireAuthenticatedRedisUrl } from '../common/runtime-config';
 
-const MAX_ACTIVE_DEPLOYMENTS = 2;
+export const MAX_ACTIVE_DEPLOYMENTS = 2;
+export const MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS = 30;
+const WEBHOOK_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 const QUEUE_JOB_OPTIONS = {
   attempts: 2,
   backoff: { type: 'exponential', delay: 5000 },
   removeOnComplete: true,
   removeOnFail: { age: 24 * 3600, count: 100 },
 };
+
+export class WebhookDeploymentQuotaExceededError extends Error {
+  constructor() {
+    super(
+      `Webhook deployment limit reached: ${MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS} builds per 24 hours`,
+    );
+    this.name = 'WebhookDeploymentQuotaExceededError';
+  }
+}
+
+function randomSuffix() {
+  return randomBytes(8).toString('hex');
+}
 
 @Injectable()
 export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
@@ -27,44 +52,57 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
     private projectsService: ProjectsService,
     @InjectQueue('builds') private queue: Queue,
   ) {
-    this.redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.redisClient = new Redis(requireAuthenticatedRedisUrl());
   }
 
   onModuleInit() {
-    this.reconcileInterval = setInterval(async () => {
-      // Leader election lock using redis SETNX
-      const lockKey = 'deployments:reconciler:lock';
-      const lockAcquired = await this.redisClient.set(lockKey, 'locked', 'PX', 10000, 'NX');
-      if (!lockAcquired) return;
+    this.reconcileInterval = setInterval(
+      async () => {
+        // Leader election lock using redis SETNX
+        const lockKey = 'deployments:reconciler:lock';
+        const lockAcquired = await this.redisClient.set(
+          lockKey,
+          'locked',
+          'PX',
+          10000,
+          'NX',
+        );
+        if (!lockAcquired) return;
 
-      try {
-        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-        const stuckDeployments = await this.prisma.deployment.findMany({
-          where: {
-            status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
-            updatedAt: { lt: fifteenMinutesAgo },
-          },
-        });
+        try {
+          const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+          const stuckDeployments = await this.prisma.deployment.findMany({
+            where: {
+              status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+              updatedAt: { lt: fifteenMinutesAgo },
+            },
+          });
 
-        if (stuckDeployments.length > 0) {
-          this.logger.warn(`Found ${stuckDeployments.length} stuck deployments. Marking as FAILED.`);
-          for (const dep of stuckDeployments) {
-            await this.prisma.deployment.update({
-              where: { id: dep.id },
-              data: { status: 'FAILED' }
-            });
-            try {
-              const job = await this.queue.getJob(dep.id);
-              if (job) await job.remove();
-            } catch (e) {
-              this.logger.error(`Failed to remove job for deployment ${dep.id}`);
+          if (stuckDeployments.length > 0) {
+            this.logger.warn(
+              `Found ${stuckDeployments.length} stuck deployments. Marking as FAILED.`,
+            );
+            for (const dep of stuckDeployments) {
+              await this.prisma.deployment.update({
+                where: { id: dep.id },
+                data: { status: 'FAILED' },
+              });
+              try {
+                const job = await this.queue.getJob(dep.id);
+                if (job) await job.remove();
+              } catch (e) {
+                this.logger.error(
+                  `Failed to remove job for deployment ${dep.id}`,
+                );
+              }
             }
           }
+        } catch (err) {
+          this.logger.error('Failed to reconcile stuck jobs', err);
         }
-      } catch (err) {
-        this.logger.error('Failed to reconcile stuck jobs', err);
-      }
-    }, 5 * 60 * 1000);
+      },
+      5 * 60 * 1000,
+    );
   }
 
   onModuleDestroy() {
@@ -75,66 +113,140 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async create(userId: string, projectId: string, dto: CreateDeploymentDto) {
-    // Verify project ownership
-    await this.projectsService.findOne(userId, projectId);
-
-    // Idempotency: check if deployment with same commit already exists and is pending
-    const existingPending = await this.prisma.deployment.findFirst({
-      where: {
-        projectId,
-        commitSha: dto.commitSha,
-        status: 'QUEUED',
-      },
+    const project = await this.projectsService.requireProjectAccess(
+      userId,
+      projectId,
+      'deploy',
+    );
+    return this.createWithinLimit({
+      project,
+      commitSha: dto.commitSha || 'HEAD',
+      commitMessage: dto.commitMessage,
+      deployedBy: userId,
+      triggerSource: 'MANUAL',
+      deduplicate: true,
     });
+  }
 
-    if (existingPending) {
-      return existingPending;
-    }
+  async createFromWebhook(
+    project: Project,
+    commitSha: string,
+    commitMessage?: string,
+  ) {
+    return this.createWithinLimit({
+      project,
+      commitSha,
+      commitMessage,
+      deployedBy: project.userId,
+      triggerSource: 'WEBHOOK',
+      deduplicate: true,
+    });
+  }
 
-    const deployment = await this.prisma.$transaction(async (tx) => {
-      const activeDeploymentsCount = await tx.deployment.count({
-        where: {
-          projectId,
-          status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+  private async createWithinLimit(input: {
+    project: Project;
+    commitSha: string;
+    commitMessage?: string;
+    deployedBy: string;
+    triggerSource: DeploymentTrigger;
+    deduplicate: boolean;
+  }) {
+    let result:
+      | {
+          deployment: Awaited<ReturnType<typeof this.prisma.deployment.create>>;
+          created: boolean;
         }
-      });
-
-      if (activeDeploymentsCount >= MAX_ACTIVE_DEPLOYMENTS) {
-        throw new BadRequestException('Too many active deployments for this project. Please wait for them to finish.');
+      | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        result = await this.prisma.$transaction(
+          async (tx) => {
+            if (input.deduplicate) {
+              const existing = await tx.deployment.findFirst({
+                where: {
+                  projectId: input.project.id,
+                  commitSha: input.commitSha,
+                  triggerSource: input.triggerSource,
+                  status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+                },
+              });
+              if (existing) {
+                return { deployment: existing, created: false };
+              }
+            }
+            if (input.triggerSource === 'WEBHOOK') {
+              const quotaWindowStart = new Date(
+                Date.now() - WEBHOOK_QUOTA_WINDOW_MS,
+              );
+              const webhookDeployments = await tx.deployment.count({
+                where: {
+                  deployedBy: input.project.userId,
+                  triggerSource: 'WEBHOOK',
+                  deployedAt: { gte: quotaWindowStart },
+                },
+              });
+              if (webhookDeployments >= MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS) {
+                throw new WebhookDeploymentQuotaExceededError();
+              }
+            }
+            const active = await tx.deployment.count({
+              where: {
+                projectId: input.project.id,
+                status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] },
+              },
+            });
+            if (active >= MAX_ACTIVE_DEPLOYMENTS) {
+              throw new BadRequestException(
+                'Too many active deployments for this project. Please wait for them to finish.',
+              );
+            }
+            const deployment = await tx.deployment.create({
+              data: {
+                projectId: input.project.id,
+                repoUrl: input.project.repoUrl,
+                branch: input.project.branch || 'main',
+                commitSha: input.commitSha,
+                commitMessage: input.commitMessage,
+                deployedBy: input.deployedBy,
+                status: 'QUEUED',
+                triggerSource: input.triggerSource,
+                s3Prefix: `${input.project.id}/${Date.now()}-${randomSuffix()}`,
+              },
+            });
+            return { deployment, created: true };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+        break;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034' &&
+          attempt < 2
+        ) {
+          continue;
+        }
+        throw error;
       }
-
-      return tx.deployment.create({
-        data: {
-          projectId,
-          repoUrl: dto.repoUrl,
-          branch: dto.branch,
-          commitSha: dto.commitSha,
-          commitMessage: dto.commitMessage,
-          deployedBy: userId,
-          status: 'QUEUED',
-          triggerSource: (dto.trigger || 'MANUAL').toUpperCase() as any,
-          s3Prefix: `${projectId}/${Date.now()}`,
+    }
+    if (!result) {
+      throw new BadRequestException('Could not create deployment');
+    }
+    if (result.created) {
+      await this.queue.add(
+        'deploy',
+        { deploymentId: result.deployment.id },
+        {
+          jobId: result.deployment.id,
+          ...QUEUE_JOB_OPTIONS,
         },
-      });
-    });
-
-    // Enqueue job in Phase 3
-    await this.queue.add('deploy', {
-      deploymentId: deployment.id,
-      repoUrl: deployment.repoUrl,
-      branch: deployment.branch,
-      commitSha: deployment.commitSha,
-    }, {
-      jobId: deployment.id,
-      ...QUEUE_JOB_OPTIONS,
-    });
-
-    return deployment;
+      );
+    }
+    return result.deployment;
   }
 
   async findAll(userId: string, projectId: string, skip = 0, take = 20) {
-    // Verify project ownership
-    await this.projectsService.findOne(userId, projectId);
+    await this.projectsService.requireProjectAccess(userId, projectId, 'read');
 
     const [deployments, total] = await Promise.all([
       this.prisma.deployment.findMany({
@@ -150,8 +262,7 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async findOne(userId: string, projectId: string, deploymentId: string) {
-    // Verify project ownership
-    await this.projectsService.findOne(userId, projectId);
+    await this.projectsService.requireProjectAccess(userId, projectId, 'read');
 
     const deployment = await this.prisma.deployment.findUnique({
       where: { id: deploymentId },
@@ -167,17 +278,18 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (deployment.projectId !== projectId) {
-      throw new ForbiddenException(
-        'Deployment does not belong to this project',
-      );
+      throw new NotFoundException('Deployment not found');
     }
 
     return deployment;
   }
 
   async rollback(userId: string, projectId: string, deploymentId: string) {
-    // Verify project ownership
-    await this.projectsService.findOne(userId, projectId);
+    const project = await this.projectsService.requireProjectAccess(
+      userId,
+      projectId,
+      'deploy',
+    );
 
     const deployment = await this.prisma.deployment.findUnique({
       where: { id: deploymentId },
@@ -188,9 +300,7 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (deployment.projectId !== projectId) {
-      throw new ForbiddenException(
-        'Deployment does not belong to this project',
-      );
+      throw new NotFoundException('Deployment not found');
     }
 
     if (deployment.status !== 'SUCCESS') {
@@ -211,62 +321,50 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('No previous successful deployment found');
     }
 
-    // Create rollback deployment
-    const rollbackDeploy = await this.prisma.deployment.create({
-      data: {
-        projectId,
-        repoUrl: previousDeploy.repoUrl,
-        branch: previousDeploy.branch,
-        commitSha: previousDeploy.commitSha,
-        commitMessage: `Rollback to ${previousDeploy.commitSha.slice(0, 7)}`,
-        deployedBy: userId,
-        status: 'QUEUED',
-        triggerSource: 'MANUAL',
-        s3Prefix: `${projectId}/${Date.now()}`,
-      },
+    return this.createWithinLimit({
+      project,
+      commitSha: previousDeploy.commitSha,
+      commitMessage: `Rollback to ${previousDeploy.commitSha.slice(0, 7)}`,
+      deployedBy: userId,
+      triggerSource: 'MANUAL',
+      deduplicate: false,
     });
-
-    // Enqueue rollback job in Phase 3
-    await this.queue.add('deploy', {
-      deploymentId: rollbackDeploy.id,
-      repoUrl: rollbackDeploy.repoUrl,
-      branch: rollbackDeploy.branch,
-      commitSha: rollbackDeploy.commitSha,
-    }, {
-      jobId: rollbackDeploy.id,
-      ...QUEUE_JOB_OPTIONS,
-    });
-
-    return rollbackDeploy;
   }
 
-  async streamLogs(userId: string, projectId: string, id: string): Promise<Observable<MessageEvent>> {
-    await this.projectsService.findOne(userId, projectId);
-    
+  async streamLogs(
+    userId: string,
+    projectId: string,
+    id: string,
+  ): Promise<Observable<MessageEvent>> {
+    await this.projectsService.requireProjectAccess(userId, projectId, 'read');
+
     const deployment = await this.prisma.deployment.findUnique({
       where: { id },
     });
 
     if (!deployment || deployment.projectId !== projectId) {
-      throw new ForbiddenException('Deployment does not belong to this project');
+      throw new NotFoundException('Deployment not found');
     }
 
     return new Observable((observer) => {
       // Send historical logs first
-      this.prisma.deploymentLogChunk.findMany({
-        where: { deploymentId: id },
-        orderBy: { sequence: 'asc' }
-      }).then(logs => {
-        logs.forEach(log => {
-          observer.next({ data: { text: log.content, stream: log.stream } });
+      this.prisma.deploymentLogChunk
+        .findMany({
+          where: { deploymentId: id },
+          orderBy: { sequence: 'asc' },
+        })
+        .then((logs) => {
+          logs.forEach((log) => {
+            observer.next({ data: { text: log.content, stream: log.stream } });
+          });
+        })
+        .catch((err) => {
+          console.error('Failed to fetch historical logs', err);
         });
-      }).catch(err => {
-        console.error('Failed to fetch historical logs', err);
-      });
 
       const channel = `deploy:${id}`;
-      const redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-      
+      const redisClient = new Redis(requireAuthenticatedRedisUrl());
+
       redisClient.subscribe(channel, (err) => {
         if (err) observer.error(err);
       });

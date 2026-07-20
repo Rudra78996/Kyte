@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentVariableEditor } from "@/components/environment-variable-editor";
+import { streamDeploymentLogs } from "@/lib/deployment-log-stream";
+import { siteUrl } from "@/lib/site-url";
 
 interface GithubRepo {
   id: number;
@@ -48,6 +50,13 @@ interface Deployment {
   triggerSource?: string;
 }
 
+interface ProjectLimit {
+  limit: number;
+  used: number;
+  remaining: number;
+  canCreate: boolean;
+}
+
 export default function NewProjectPage() {
   const [step, setStep] = useState(1);
   const [githubConnected, setGithubConnected] = useState(false);
@@ -68,6 +77,9 @@ export default function NewProjectPage() {
   
   // Organization settings
   const [selectedOrgId, setSelectedOrgId] = useState("");
+  const [organizationsLoading, setOrganizationsLoading] = useState(true);
+  const [projectLimit, setProjectLimit] = useState<ProjectLimit | null>(null);
+  const [projectLimitLoading, setProjectLimitLoading] = useState(true);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -123,16 +135,35 @@ export default function NewProjectPage() {
   async function fetchOrganizations() {
     try {
       const res = await apiRequest("GET", "/organizations");
-      if (res.organizations && res.organizations.length > 0) {
+      const availableOrganizations: { id: string }[] = res.organizations || [];
+      if (availableOrganizations.length > 0) {
         const savedOrgId = typeof window !== 'undefined' ? localStorage.getItem("kyte-active-org") : null;
-        if (savedOrgId && res.organizations.some((o: { id: string }) => o.id === savedOrgId)) {
+        if (savedOrgId && availableOrganizations.some((o) => o.id === savedOrgId)) {
           setSelectedOrgId(savedOrgId);
         } else {
-          setSelectedOrgId(res.organizations[0].id);
+          setSelectedOrgId(availableOrganizations[0].id);
         }
+      } else {
+        setSelectedOrgId("");
+        router.replace("/onboarding");
       }
     } catch (err) {
       console.error(err);
+      setError("Could not load your organizations. Refresh the page and try again.");
+    } finally {
+      setOrganizationsLoading(false);
+    }
+  }
+
+  async function fetchProjectLimit() {
+    try {
+      const limit = await apiRequest("GET", "/projects/limits");
+      setProjectLimit(limit);
+    } catch (err) {
+      console.error(err);
+      setError("Could not load your project allowance. Refresh the page and try again.");
+    } finally {
+      setProjectLimitLoading(false);
     }
   }
 
@@ -141,6 +172,7 @@ export default function NewProjectPage() {
     const timer = setTimeout(() => {
       void checkGithubConnection();
       void fetchOrganizations();
+      void fetchProjectLimit();
     }, 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,15 +203,15 @@ export default function NewProjectPage() {
 
   useEffect(() => {
     if (!activeDeploy || step !== 3) return;
-    let es: EventSource;
+    const controller = new AbortController();
     (async () => {
       const token = await getClerkToken();
       if (!token) return;
       const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
-      es = new EventSource(`${API_BASE}/projects/${project?.id}/deployments/${activeDeploy.id}/logs?token=${token}`);
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
+      await streamDeploymentLogs(
+        `${API_BASE}/projects/${project?.id}/deployments/${activeDeploy.id}/logs`,
+        token,
+        (data) => {
           setLogs(prev => [...prev, data]);
           
           setDeployStatus(prev => prev === 'QUEUED' ? 'BUILDING' : prev);
@@ -189,19 +221,33 @@ export default function NewProjectPage() {
              setTimeout(() => {
                setStep(4);
              }, 3000);
-             es.close();
+             controller.abort();
           } else if (data.text.includes('Build failed:')) {
              setDeployStatus('FAILED');
              setError("Deployment failed. Please check the logs.");
-             es.close();
+             controller.abort();
           }
-        } catch {}
-      };
-    })();
-    return () => es?.close();
+        },
+        controller.signal,
+      );
+    })().catch((error) => {
+      if (!controller.signal.aborted) {
+        setError(error instanceof Error ? error.message : "Deployment log connection failed");
+      }
+    });
+    return () => controller.abort();
   }, [activeDeploy, getClerkToken, project?.id, step]);
 
   const handleDeploy = async () => {
+    if (!selectedOrgId) {
+      setError("Select an organization before creating the project.");
+      return;
+    }
+    if (projectLimit && !projectLimit.canCreate) {
+      setError(`You have reached the ${projectLimit.limit}-project limit. Delete a project before creating another.`);
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -219,7 +265,7 @@ export default function NewProjectPage() {
       setProject(proj);
 
       const deployRes = await apiRequest('POST', `/projects/${proj.id}/deployments`, {
-        repoUrl: proj.repoUrl, branch: proj.branch || 'main', commitSha: 'HEAD',
+        commitSha: 'HEAD',
       });
       setActiveDeploy(deployRes);
       
@@ -474,32 +520,34 @@ export default function NewProjectPage() {
                     <SelectValue placeholder="Select a preset" />
                   </SelectTrigger>
                   <SelectContent align="start" sideOffset={8}>
-                    <SelectItem value="Next.js">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-5 items-center justify-center rounded-full bg-white text-black">
-                          <SiNextdotjs className="size-3" />
+                    <SelectGroup>
+                      <SelectItem value="Next.js">
+                        <div className="flex items-center gap-2">
+                          <div className="flex size-5 items-center justify-center rounded-full bg-white text-black">
+                            <SiNextdotjs className="size-3" />
+                          </div>
+                          Next.js
                         </div>
-                        Next.js
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="React">
-                      <div className="flex items-center gap-2">
-                        <SiReact className="size-5 text-[#61DAFB]" />
-                        React (Vite)
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Vue">
-                      <div className="flex items-center gap-2">
-                        <SiVuedotjs className="size-5 text-[#41B883]" />
-                        Vue.js
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Other">
-                      <div className="flex items-center gap-2">
-                        <Box className="size-5 text-zinc-400" />
-                        Other
-                      </div>
-                    </SelectItem>
+                      </SelectItem>
+                      <SelectItem value="React">
+                        <div className="flex items-center gap-2">
+                          <SiReact className="size-5 text-[#61DAFB]" />
+                          React (Vite)
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Vue">
+                        <div className="flex items-center gap-2">
+                          <SiVuedotjs className="size-5 text-[#41B883]" />
+                          Vue.js
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Other">
+                        <div className="flex items-center gap-2">
+                          <Box className="size-5 text-zinc-400" />
+                          Other
+                        </div>
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 {preset === 'Next.js' && (
@@ -574,7 +622,7 @@ export default function NewProjectPage() {
             <CardFooter className="border-t border-zinc-800/70 bg-zinc-900/30 px-6 py-4">
               <Button 
                 onClick={handleDeploy}
-                disabled={loading}
+                disabled={loading || organizationsLoading || projectLimitLoading || !selectedOrgId || !projectLimit?.canCreate}
                 className="h-8 w-full text-[13px] sm:w-auto"
               >
                 {loading ? (
@@ -681,7 +729,7 @@ export default function NewProjectPage() {
               </div>
               <div className="pointer-events-none relative aspect-[16/10] w-full overflow-hidden">
                 <iframe 
-                  src={`https://${project?.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} 
+                  src={siteUrl(project?.subdomain || "")}
                   className="pointer-events-none absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-50 border-none"
                   scrolling="no"
                   tabIndex={-1}
@@ -696,7 +744,7 @@ export default function NewProjectPage() {
               <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-500">Next steps</h3>
               
               <div className="flex flex-col divide-y divide-zinc-800/70">
-                <a href={`https://${project?.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer" className="group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center justify-between rounded-md px-2 py-2.5 transition-colors hover:bg-zinc-900/70">
+                <a href={siteUrl(project?.subdomain || "")} target="_blank" rel="noreferrer" className="group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center justify-between rounded-md px-2 py-2.5 transition-colors hover:bg-zinc-900/70">
                   <div className="flex items-center gap-3">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/80 text-zinc-400 transition-colors group-hover:border-zinc-700 group-hover:text-zinc-200">
                       <ExternalLink className="size-4" />

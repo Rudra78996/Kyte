@@ -16,6 +16,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
+import { requireAuthenticatedRedisUrl } from './common/runtime-config';
 
 @Module({
   imports: [
@@ -30,14 +31,14 @@ import Redis from 'ioredis';
           limit: 100,
         }],
         storage: new ThrottlerStorageRedisService(
-          new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+          new Redis(requireAuthenticatedRedisUrl())
         ),
       }),
     }),
     BullModule.forRootAsync({
       useFactory: () => ({
         connection: {
-          url: process.env.REDIS_URL || 'redis://localhost:6379',
+          url: requireAuthenticatedRedisUrl(),
         },
       }),
     }),

@@ -10,9 +10,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
-import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import {
+  CreateProjectDto,
+  DomainDto,
+  EnvironmentVariablesDto,
+  UpdateProjectDto,
+} from './dto/project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { ProjectListQueryDto } from '../common/request.dto';
+import {
+  EnvironmentKeyPipe,
+  ResourceIdPipe,
+} from '../common/security-validation.pipe';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -30,22 +40,25 @@ export class ProjectsController {
   @Get()
   async findAll(
     @CurrentUser('id') userId: string,
-    @Query('organizationId') organizationId?: string,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string,
+    @Query() query: ProjectListQueryDto,
   ) {
     return this.projectsService.findAll(
       userId,
-      skip ? parseInt(skip) : 0,
-      take ? parseInt(take) : 20,
-      organizationId,
+      query.skip,
+      query.take,
+      query.organizationId,
     );
+  }
+
+  @Get('limits')
+  async getProjectLimit(@CurrentUser('id') userId: string) {
+    return this.projectsService.getProjectLimit(userId);
   }
 
   @Get(':id')
   async findOne(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.findOne(userId, projectId);
   }
@@ -53,7 +66,7 @@ export class ProjectsController {
   @Patch(':id')
   async update(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
     @Body() dto: UpdateProjectDto,
   ) {
     return this.projectsService.update(userId, projectId, dto);
@@ -62,7 +75,7 @@ export class ProjectsController {
   @Get(':id/metrics')
   async getMetrics(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.getMetrics(userId, projectId);
   }
@@ -70,15 +83,31 @@ export class ProjectsController {
   @Post(':id/webhook/enable')
   async enableWebhook(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.enableWebhook(userId, projectId);
+  }
+
+  @Get(':id/webhook')
+  async getWebhookStatus(
+    @CurrentUser('id') userId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
+  ) {
+    return this.projectsService.getWebhookStatus(userId, projectId);
+  }
+
+  @Delete(':id/webhook')
+  async disableWebhook(
+    @CurrentUser('id') userId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
+  ) {
+    return this.projectsService.disableWebhook(userId, projectId);
   }
 
   @Delete(':id')
   async delete(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.delete(userId, projectId);
   }
@@ -86,7 +115,7 @@ export class ProjectsController {
   @Get(':id/env')
   async getEnv(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.getEnvironmentVariables(userId, projectId);
   }
@@ -94,25 +123,33 @@ export class ProjectsController {
   @Post(':id/env')
   async upsertEnv(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
-    @Body() body: { variables: { key: string; value: string }[] },
+    @Param('id', ResourceIdPipe) projectId: string,
+    @Body() body: EnvironmentVariablesDto,
   ) {
-    return this.projectsService.upsertEnvironmentVariables(userId, projectId, body.variables);
+    return this.projectsService.upsertEnvironmentVariables(
+      userId,
+      projectId,
+      body.variables,
+    );
   }
 
   @Delete(':id/env/:key')
   async deleteEnv(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
-    @Param('key') key: string,
+    @Param('id', ResourceIdPipe) projectId: string,
+    @Param('key', EnvironmentKeyPipe) key: string,
   ) {
-    return this.projectsService.deleteEnvironmentVariable(userId, projectId, key);
+    return this.projectsService.deleteEnvironmentVariable(
+      userId,
+      projectId,
+      key,
+    );
   }
   @Post(':id/domains')
   async addDomain(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
-    @Body() body: { domainName: string },
+    @Param('id', ResourceIdPipe) projectId: string,
+    @Body() body: DomainDto,
   ) {
     return this.projectsService.addDomain(userId, projectId, body.domainName);
   }
@@ -120,7 +157,7 @@ export class ProjectsController {
   @Get(':id/domains')
   async getDomains(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
   ) {
     return this.projectsService.getDomains(userId, projectId);
   }
@@ -128,7 +165,7 @@ export class ProjectsController {
   @Delete(':id/domains/:domainName')
   async deleteDomain(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
     @Param('domainName') domainName: string,
   ) {
     return this.projectsService.deleteDomain(userId, projectId, domainName);
@@ -137,7 +174,7 @@ export class ProjectsController {
   @Post(':id/domains/:domainName/verify')
   async verifyDomain(
     @CurrentUser('id') userId: string,
-    @Param('id') projectId: string,
+    @Param('id', ResourceIdPipe) projectId: string,
     @Param('domainName') domainName: string,
   ) {
     return this.projectsService.verifyDomain(userId, projectId, domainName);

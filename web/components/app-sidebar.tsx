@@ -7,6 +7,8 @@ import { useApiRequest } from "@/hooks/use-api"
 import { NavUser } from "@/components/nav-user"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -50,6 +52,7 @@ import {
   Building2,
   Search,
   AppWindow,
+  Settings2,
 } from "lucide-react"
 
 type RequestError = Error & { status?: number; details?: { suggestedSlug?: string } };
@@ -75,8 +78,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     project?: { name?: string };
   }
 
+  interface ProjectLimit {
+    limit: number;
+    used: number;
+    remaining: number;
+    canCreate: boolean;
+  }
+
   const [projects, setProjects] = React.useState<SidebarProject[]>([]);
   const [organizations, setOrganizations] = React.useState<SidebarOrg[]>([]);
+  const [projectLimit, setProjectLimit] = React.useState<ProjectLimit | null>(null);
   const [projectSearch, setProjectSearch] = React.useState("");
   
   // Read initial activeOrg from localStorage if available
@@ -118,6 +129,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       } catch (e) {
         console.error("Failed to load sidebar data", e);
         // Do NOT redirect on error — the error could be transient
+      }
+    })();
+  }, [pathname, apiRequest]);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const limit = await apiRequest('GET', '/projects/limits');
+        setProjectLimit(limit);
+      } catch (error) {
+        console.error("Failed to load project allowance", error);
       }
     })();
   }, [pathname, apiRequest]);
@@ -274,6 +296,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <span>Deployments</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === '/settings'}
+                  tooltip="Settings"
+                  className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                  render={<Link href="/settings" />}
+                >
+                  <Settings2 />
+                  <span>Settings</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
           <SidebarGroup className="mt-5 px-0 py-0 flex-1 min-h-0 flex flex-col">
@@ -337,7 +370,50 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarContent>
 
         <SidebarFooter className="border-t border-sidebar-border bg-sidebar p-3">
-          <NavUser />
+          <div className="flex flex-col gap-3">
+            {projectLimit && (
+              <Link
+                href="/settings#usage"
+                className="group flex flex-col gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 transition-colors hover:bg-sidebar-accent/60"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-sidebar-foreground">Project usage</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {projectLimit.remaining === 0
+                        ? 'No slots remaining'
+                        : `${projectLimit.remaining} ${projectLimit.remaining === 1 ? 'slot' : 'slots'} remaining`}
+                    </p>
+                  </div>
+                  <span className="font-mono text-xs font-medium text-sidebar-foreground">
+                    {projectLimit.used} of {projectLimit.limit}
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="Project allowance used"
+                  aria-valuemin={0}
+                  aria-valuemax={projectLimit.limit}
+                  aria-valuenow={projectLimit.used}
+                  className="flex gap-1"
+                >
+                  {Array.from({ length: projectLimit.limit }, (_, index) => (
+                    <span
+                      key={index}
+                      className={cn(
+                        "h-1.5 flex-1 rounded-full transition-colors",
+                        index < projectLimit.used
+                          ? "bg-sidebar-primary-foreground"
+                          : "bg-sidebar-accent",
+                      )}
+                    />
+                  ))}
+                </div>
+              </Link>
+            )}
+            <Separator />
+            <NavUser />
+          </div>
         </SidebarFooter>
       </Sidebar>
 

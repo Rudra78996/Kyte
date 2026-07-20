@@ -3,15 +3,25 @@ import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DeploymentsModule } from '../deployments/deployments.module';
-import { BullModule } from '@nestjs/bullmq';
+import Redis from 'ioredis';
+import { WEBHOOK_REDIS } from './webhooks.service';
+import { requireAuthenticatedRedisUrl } from '../common/runtime-config';
 
 @Module({
   imports: [
-    PrismaModule, 
+    PrismaModule,
     DeploymentsModule,
-    BullModule.registerQueue({ name: 'builds' }),
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService],
+  providers: [
+    WebhooksService,
+    {
+      provide: WEBHOOK_REDIS,
+      useFactory: () =>
+        new Redis(requireAuthenticatedRedisUrl(), {
+          maxRetriesPerRequest: 2,
+        }),
+    },
+  ],
 })
 export class WebhooksModule {}

@@ -174,7 +174,7 @@ export default function LandingPage() {
                         <div className="w-6 h-6 rounded-full bg-neutral-200 border border-neutral-700 group-hover:border-[#8b9dce] transition-colors overflow-hidden flex items-center justify-center shrink-0">
                           <img src="https://api.dicebear.com/9.x/notionists/svg?seed=Sophia&backgroundColor=transparent" alt="Avatar" className="w-full h-full object-cover p-[1px]" />
                         </div>
-                        <span className="font-medium text-neutral-300">Alex's Team</span>
+                        <span className="font-medium text-neutral-300">Alex&apos;s Team</span>
                         <ChevronDown className="size-3.5 text-neutral-600 ml-auto" />
                       </div>
                     </div>
@@ -249,7 +249,7 @@ export default function LandingPage() {
                             </div>
                             <div className="flex-1 p-5 font-mono text-[13px] text-neutral-500 overflow-y-auto space-y-1.5">
                               <div><span className="text-neutral-600">[14:02:11]</span> Cloning repository Kyte/Overlord...</div>
-                              <div><span className="text-neutral-600">[14:02:12]</span> Running build command 'npm run build'...</div>
+                              <div><span className="text-neutral-600">[14:02:12]</span> Running build command &apos;npm run build&apos;...</div>
                               <div><span className="text-neutral-600">[14:02:15]</span> Installing dependencies (npm install)...</div>
                               <div className="text-neutral-400">✓ Dependencies installed successfully (2.1s)</div>
                               <div className="mt-3"><span className="text-neutral-600">[14:02:18]</span> Building Next.js application (Turbopack)...</div>
@@ -556,7 +556,7 @@ export default function LandingPage() {
               Empower Your Deployment Workflows
             </h2>
             <p className="max-w-2xl mx-auto text-lg text-neutral-400">
-              Generic deployment tools won't suffice. Our platform is purpose-built to provide exceptional edge performance for your unique applications.
+              Generic deployment tools won&apos;t suffice. Our platform is purpose-built to provide exceptional edge performance for your unique applications.
             </p>
           </div>
 
@@ -712,7 +712,7 @@ export default function LandingPage() {
                 The <span className="italic font-light">usual stuff.</span>
               </h2>
               <p className="text-neutral-400 leading-relaxed">
-                Can't find what you're after? <a href="#" className="text-white underline decoration-neutral-600 underline-offset-4 hover:decoration-white transition-colors">Email us</a>,
+                Can&apos;t find what you&apos;re after? <a href="#" className="text-white underline decoration-neutral-600 underline-offset-4 hover:decoration-white transition-colors">Email us</a>,
                 <br />and we usually reply the same day.
               </p>
             </div>

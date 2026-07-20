@@ -5,6 +5,7 @@ import { useApiRequest, useApiToken } from '@/hooks/use-api';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +17,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX, ArrowUpRight, Radio, Server, Zap } from 'lucide-react';
+import { Copy, Download, ExternalLink, FileText, GitBranch, GitCommitHorizontal, Clock, ChevronRight, Globe, RefreshCw, Search, Activity, Users, Gauge, Timer, MapPinned, CircleCheck, CircleX, ArrowUpRight, Radio, Server, Zap, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { ProjectAvatar } from '@/components/project-avatar';
 import { EnvironmentVariableEditor } from '@/components/environment-variable-editor';
+import { streamDeploymentLogs } from '@/lib/deployment-log-stream';
 import { DomainManager } from '@/components/domain-manager';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { toast } from 'sonner';
+import { siteHostname, siteUrl } from '@/lib/site-url';
 
 
 
@@ -55,6 +59,15 @@ interface SettingsForm {
   rootDirectory: string;
   buildCommand: string;
   outputDirectory: string;
+}
+
+interface WebhookStatus {
+  enabled: boolean;
+  provider: 'github';
+  repository: string;
+  branch: string;
+  limit: number;
+  canEnable: boolean;
 }
 
 interface ProjectMetrics {
@@ -105,6 +118,8 @@ export default function ProjectPage() {
   const [envVars, setEnvVars] = useState<{key: string, value: string}[]>([]);
   const [isSavingEnv, setIsSavingEnv] = useState(false);
   const [hasEnvChanges, setHasEnvChanges] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null);
+  const [webhookAction, setWebhookAction] = useState<'enable' | 'disable' | null>(null);
 
   const copyLogs = async () => {
     await navigator.clipboard.writeText(logs.map((log) => log.text).join(''));
@@ -125,6 +140,16 @@ export default function ProjectPage() {
       const proj = await apiRequest('GET', `/projects`);
       const found = proj.projects.find((p: Project) => p.id === projectId);
       setProject(found);
+      setWebhookStatus({
+        enabled: Boolean(found.webhookId),
+        provider: 'github',
+        repository: found.repoUrl,
+        branch: found.branch || 'main',
+        limit: 1,
+        canEnable: true,
+      });
+      const webhook = await apiRequest('GET', `/projects/${projectId}/webhook`).catch(() => null);
+      if (webhook) setWebhookStatus(webhook);
 
       setSettingsForm((prev: SettingsForm) => ({
         name: prev.name || found.name || '',
@@ -169,7 +194,7 @@ export default function ProjectPage() {
     try {
       if (!project) return;
       const res = await apiRequest('POST', `/projects/${projectId}/deployments`, {
-        repoUrl: project.repoUrl, branch: project.branch || 'main', commitSha: 'HEAD',
+        commitSha: 'HEAD',
       });
       setActiveDeploy(res);
       setLogs([]);
@@ -180,17 +205,31 @@ export default function ProjectPage() {
     }
   };
 
-  const [enablingWebhook, setEnablingWebhook] = useState(false);
   const enableWebhook = async () => {
-    setEnablingWebhook(true);
+    setWebhookAction('enable');
     try {
-      const res = await apiRequest('POST', `/projects/${projectId}/webhook/enable`);
-      alert(res.message || 'Webhook enabled!');
+      const status = await apiRequest('POST', `/projects/${projectId}/webhook/enable`);
+      setWebhookStatus(status);
+      toast.success(status.message || 'Automatic deployments enabled');
       void loadData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to enable webhook');
+      toast.error(err instanceof Error ? err.message : 'Failed to enable automatic deployments');
     }
-    finally { setEnablingWebhook(false); }
+    finally { setWebhookAction(null); }
+  };
+
+  const disableWebhook = async () => {
+    setWebhookAction('disable');
+    try {
+      const status = await apiRequest('DELETE', `/projects/${projectId}/webhook`);
+      setWebhookStatus(status);
+      toast.success(status.message || 'Automatic deployments disabled');
+      void loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to disable automatic deployments');
+    } finally {
+      setWebhookAction(null);
+    }
   };
 
   const saveSettings = async () => {
@@ -232,23 +271,24 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (!activeDeploy?.id) return;
-    let es: EventSource;
+    const controller = new AbortController();
     (async () => {
       const token = await getClerkToken();
       if (!token) return;
       const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/api';
-      es = new EventSource(`${API_BASE}/projects/${projectId}/deployments/${activeDeploy.id}/logs?token=${token}`);
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
+      await streamDeploymentLogs(
+        `${API_BASE}/projects/${projectId}/deployments/${activeDeploy.id}/logs`,
+        token,
+        (data) => {
           setLogs(prev => [...prev, data]);
           if (data.text.includes('Deploy complete.') || data.text.includes('Build failed:')) {
             void loadData();
           }
-        } catch {}
-      };
-    })();
-    return () => es?.close();
+        },
+        controller.signal,
+      );
+    })().catch(() => {});
+    return () => controller.abort();
   }, [activeDeploy?.id, getClerkToken, loadData, projectId]);
 
   if (!project) return <div className="app-page py-24 text-center text-muted-foreground animate-pulse">Loading project…</div>;
@@ -288,7 +328,7 @@ export default function ProjectPage() {
           <Button onClick={triggerDeploy} variant="outline" size="sm">
             <RefreshCw data-icon="inline-start" /> Redeploy
           </Button>
-          <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer">
+          <a href={siteUrl(project.subdomain || '')} target="_blank" rel="noreferrer">
             <Button size="sm">
               <ExternalLink data-icon="inline-start" /> Visit
             </Button>
@@ -308,9 +348,9 @@ export default function ProjectPage() {
                 <Badge variant="outline" className="font-mono font-normal">{project.preset || 'Other'}</Badge>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                <a href={siteUrl(project.subdomain || '')} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-foreground transition-colors">
                   <Globe className="size-3.5" />
-                  {project.subdomain}.{process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'} <ExternalLink className="size-3" />
+                  {siteHostname(project.subdomain || '')} <ExternalLink className="size-3" />
                 </a>
                 <div className="flex items-center gap-2">
                   <GitBranch className="size-3.5" /> {project.branch || 'main'}
@@ -625,7 +665,7 @@ export default function ProjectPage() {
 
               <div className="flex shrink-0 items-center justify-between border-t border-border bg-zinc-900/50 px-4 py-2">
                 <span className="text-xs text-muted-foreground">Streaming · {activeDeploy?.triggerSource === 'WEBHOOK' ? 'Git push' : 'Manual deployment'}</span>
-                <a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer">
+                <a href={siteUrl(project.subdomain || '')} target="_blank" rel="noreferrer">
                   <Button variant="ghost" size="sm">
                     Visit deployment <ExternalLink data-icon="inline-end" />
                   </Button>
@@ -708,7 +748,50 @@ export default function ProjectPage() {
 
               <div className="flex flex-col gap-8 border-t border-border pt-8 md:flex-row">
                 <div className="w-full md:w-1/3"><p className="section-label">Source control</p><h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Git integration</h2><p className="mt-1 text-sm text-muted-foreground">Connect pushes on your production branch to automatic deployments.</p></div>
-                <div className="w-full overflow-hidden rounded-lg border border-border bg-card md:w-2/3"><div className="flex flex-col gap-4 p-6"><div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">GitHub webhook</p><p className="mt-1 text-xs text-muted-foreground">{project.webhookId ? 'Auto-deploy is enabled for this project.' : 'Deploy automatically when a commit reaches the production branch.'}</p></div><Button variant="outline" size="sm" onClick={enableWebhook} disabled={enablingWebhook}>{enablingWebhook ? 'Connecting…' : project.webhookId ? 'Enabled' : 'Enable'}</Button></div><div className="flex items-center justify-between gap-4 border-t border-border pt-4 text-sm"><span className="text-muted-foreground">Repository</span><span className="truncate font-mono text-xs text-zinc-300">{project.repoUrl}</span></div></div></div>
+                <Card className="w-full overflow-hidden md:w-2/3">
+                  <CardHeader className="flex-row items-start justify-between gap-4 border-b border-border">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40">
+                        <Webhook className="size-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="text-sm">GitHub auto-deploy</CardTitle>
+                        <CardDescription className="mt-1 text-xs leading-5">
+                          One webhook deploys pushes to the configured production branch.
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className={webhookStatus?.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "text-muted-foreground"}>
+                      {webhookStatus?.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Repository</p>
+                      <p className="mt-1 truncate font-mono text-xs">{webhookStatus?.repository || project.repoUrl}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Production branch</p>
+                      <p className="mt-1 flex items-center gap-1.5 font-mono text-xs"><GitBranch className="size-3.5" />{webhookStatus?.branch || project.branch || 'main'}</p>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-between gap-4 border-t border-border bg-muted/20 pt-6">
+                    <p className="text-xs text-muted-foreground">
+                      {webhookStatus?.canEnable === false
+                        ? 'Limit reached: disable auto-deploy on another project first.'
+                        : 'Pushes create a deployment automatically; repeated commit deliveries are ignored.'}
+                    </p>
+                    {webhookStatus?.enabled ? (
+                      <Button variant="outline" size="sm" onClick={disableWebhook} disabled={webhookAction !== null}>
+                        {webhookAction === 'disable' ? 'Disconnecting…' : 'Disable'}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={enableWebhook} disabled={webhookAction !== null || webhookStatus?.canEnable === false}>
+                        {webhookAction === 'enable' ? 'Connecting…' : 'Enable'}
+                      </Button>
+                    )}
+                  </CardFooter>
+                </Card>
               </div>
 
               <div className="mt-8 flex flex-col items-start gap-8 md:flex-row">
@@ -758,7 +841,7 @@ export default function ProjectPage() {
               <div><h2 className="text-lg font-semibold tracking-[-0.02em]">Domains</h2><p className="mt-1 text-sm text-muted-foreground">Manage where people can reach this project.</p></div>
               <div className="overflow-hidden rounded-lg border border-border bg-card">
                 <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="text-sm font-medium">Production domain</h3><p className="mt-1 text-xs text-muted-foreground">The default URL for your live deployment.</p></div><Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Active</Badge></div>
-                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{project.subdomain}.{process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={`https://${project.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || 'localhost'}`} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
+                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400"><Globe className="size-4" /></div><div className="min-w-0"><p className="truncate font-mono text-sm text-zinc-200">{siteHostname(project.subdomain || '')}</p><p className="mt-1 text-xs text-muted-foreground">Managed by Kyte</p></div></div><a href={siteUrl(project.subdomain || '')} target="_blank" rel="noreferrer"><Button variant="outline" size="sm">Visit domain<ExternalLink data-icon="inline-end" /></Button></a></div>
               </div>
               <DomainManager projectId={projectId} />
             </div>
