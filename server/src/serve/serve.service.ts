@@ -6,9 +6,6 @@ import * as mime from 'mime-types';
 import * as geoip from 'geoip-lite';
 import { requireEnvironment } from '../common/runtime-config';
 
-const GENERATED_SITE_CSP =
-  'sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts';
-
 @Injectable()
 export class ServeService {
   private s3: S3Client;
@@ -48,9 +45,6 @@ export class ServeService {
         path,
         res,
         req,
-        {
-          generatedSite: true,
-        },
       );
     }
 
@@ -66,9 +60,6 @@ export class ServeService {
       path,
       res,
       req,
-      {
-        generatedSite: true,
-      },
     );
   }
 
@@ -130,7 +121,6 @@ export class ServeService {
     path: string,
     res: Response,
     req: Request,
-    options: { generatedSite?: boolean } = {},
   ) {
     const startTime = performance.now();
 
@@ -170,11 +160,6 @@ export class ServeService {
       'application/octet-stream';
     res.setHeader('Content-Type', contentType);
     res.removeHeader('Set-Cookie');
-    if (options.generatedSite) {
-      res.setHeader('Content-Security-Policy', GENERATED_SITE_CSP);
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Origin-Agent-Cluster', '?1');
-    }
     if (s3Response.CacheControl) {
       res.setHeader('Cache-Control', s3Response.CacheControl);
     }

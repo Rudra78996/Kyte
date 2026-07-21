@@ -80,7 +80,7 @@ describe('deployed-site hostname isolation', () => {
     );
   });
 
-  it('applies sandbox headers to generated site responses', async () => {
+  it('strips Set-Cookie without sandboxing generated site responses', async () => {
     const body = {
       pipe: jest.fn(),
     };
@@ -120,18 +120,9 @@ describe('deployed-site hostname isolation', () => {
     );
 
     expect(res.removeHeader).toHaveBeenCalledWith('Set-Cookie');
-    expect(res.setHeader).toHaveBeenCalledWith(
-      'Content-Security-Policy',
-      expect.stringContaining('sandbox'),
-    );
     expect(res.setHeader).not.toHaveBeenCalledWith(
       'Content-Security-Policy',
-      expect.stringContaining('allow-same-origin'),
+      expect.anything(),
     );
-    expect(res.setHeader).toHaveBeenCalledWith(
-      'Cross-Origin-Opener-Policy',
-      'same-origin',
-    );
-    expect(res.setHeader).toHaveBeenCalledWith('Origin-Agent-Cluster', '?1');
   });
 });

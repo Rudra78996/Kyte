@@ -57,6 +57,17 @@ interface ProjectLimit {
   canCreate: boolean;
 }
 
+function serializeEnvironmentVariables(
+  variables: Array<{ key: string; value: string }>,
+) {
+  return variables
+    .filter((variable) => variable.key.trim())
+    .map((variable) => ({
+      key: variable.key.trim(),
+      value: variable.value,
+    }));
+}
+
 export default function NewProjectPage() {
   const [step, setStep] = useState(1);
   const [githubConnected, setGithubConnected] = useState(false);
@@ -260,7 +271,7 @@ export default function NewProjectPage() {
         outputDirectory,
         branch,
         organizationId: selectedOrgId,
-        environmentVariables: envVars.filter(e => e.key.trim())
+        environmentVariables: serializeEnvironmentVariables(envVars),
       });
       setProject(proj);
 

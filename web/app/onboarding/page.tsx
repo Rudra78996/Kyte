@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useApiRequest } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ type RequestError = Error & { status?: number; details?: { suggestedSlug?: strin
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => { document.title = "Onboarding | Kyte"; }, []);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -20,20 +22,35 @@ export default function OnboardingPage() {
   const apiRequest = useApiRequest();
 
   useEffect(() => {
-    (async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      router.replace("/sign-in");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      (async () => {
       try {
         const res = await apiRequest("GET", "/organizations");
+        if (controller.signal.aborted) return;
         if (res.organizations && res.organizations.length > 0) {
+          localStorage.setItem("kyte-active-org", res.organizations[0].id);
           router.replace("/dashboard");
           return;
         }
       } catch {
         // Ignore errors — allow onboarding to show
       } finally {
-        setChecking(false);
+        if (!controller.signal.aborted) setChecking(false);
       }
-    })();
-  }, [apiRequest, router]);
+      })();
+    }, 0);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [apiRequest, isLoaded, isSignedIn, router]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +58,10 @@ export default function OnboardingPage() {
     setSuggestedSlug("");
     setLoading(true);
     try {
-      await apiRequest("POST", "/organizations", { name, slug });
-      window.location.href = "/dashboard";
+      const organization = await apiRequest("POST", "/organizations", { name, slug });
+      localStorage.setItem("kyte-active-org", organization.id);
+      router.replace("/dashboard");
+      router.refresh();
     } catch (cause) {
       const requestError = cause as RequestError;
       console.error(cause);
