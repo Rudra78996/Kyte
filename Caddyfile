@@ -38,9 +38,9 @@ http://*.sites.localhost {
 		-Server
 		-X-Powered-By
 		-Set-Cookie
-		Content-Security-Policy "sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts"
-		Cross-Origin-Opener-Policy "same-origin"
-		Origin-Agent-Cluster "?1"
+		-Content-Security-Policy
+		-Cross-Origin-Opener-Policy
+		-Origin-Agent-Cluster
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
@@ -92,9 +92,9 @@ https:// {
 			-Server
 			-X-Powered-By
 			-Set-Cookie
-			Content-Security-Policy "sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts"
-			Cross-Origin-Opener-Policy "same-origin"
-			Origin-Agent-Cluster "?1"
+			-Content-Security-Policy
+			-Cross-Origin-Opener-Policy
+			-Origin-Agent-Cluster
 			X-Content-Type-Options "nosniff"
 			Referrer-Policy "strict-origin-when-cross-origin"
 			Permissions-Policy "camera=(), microphone=(), geolocation=()"

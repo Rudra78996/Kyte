@@ -93,6 +93,17 @@ function formatRelativeTime(value?: string) {
   return `Deployed ${Math.floor(hours / 24)}d ago`;
 }
 
+function serializeEnvironmentVariables(
+  variables: Array<{ key: string; value: string }>,
+) {
+  return variables
+    .filter((variable) => variable.key.trim())
+    .map((variable) => ({
+      key: variable.key.trim(),
+      value: variable.value,
+    }));
+}
+
 export default function ProjectPage() {
   useEffect(() => { document.title = "Project | Kyte"; }, []);
   const params = useParams();
@@ -248,7 +259,9 @@ export default function ProjectPage() {
   const saveEnvVars = async () => {
     setIsSavingEnv(true);
     try {
-      await apiRequest('POST', `/projects/${projectId}/env`, { variables: envVars.filter(e => e.key.trim()) });
+      await apiRequest('POST', `/projects/${projectId}/env`, {
+        variables: serializeEnvironmentVariables(envVars),
+      });
       alert('Environment variables saved successfully!');
       setHasEnvChanges(false);
       void loadData();

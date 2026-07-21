@@ -3,6 +3,7 @@
 import * as React from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
+import { useAuth } from "@clerk/nextjs"
 import { useApiRequest } from "@/hooks/use-api"
 import { NavUser } from "@/components/nav-user"
 import { Input } from "@/components/ui/input"
@@ -60,6 +61,7 @@ type RequestError = Error & { status?: number; details?: { suggestedSlug?: strin
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
+  const { isLoaded, isSignedIn } = useAuth();
   const apiRequest = useApiRequest();
 
   interface SidebarOrg {
@@ -88,6 +90,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const [projects, setProjects] = React.useState<SidebarProject[]>([]);
   const [organizations, setOrganizations] = React.useState<SidebarOrg[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = React.useState(true);
   const [projectLimit, setProjectLimit] = React.useState<ProjectLimit | null>(null);
   const [projectSearch, setProjectSearch] = React.useState("");
   
@@ -112,16 +115,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Fetch organizations only
   React.useEffect(() => {
-    (async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      (async () => {
       try {
+        setOrganizationsLoading(true);
         const orgsRes = await apiRequest('GET', '/organizations');
-        if (orgsRes.organizations && orgsRes.organizations.length > 0) {
-          setOrganizations(orgsRes.organizations);
+        if (controller.signal.aborted) return;
+        const nextOrganizations = orgsRes.organizations || [];
+        setOrganizations(nextOrganizations);
+        if (nextOrganizations.length > 0) {
           
           const savedOrgId = localStorage.getItem("kyte-active-org");
-          const savedOrg = orgsRes.organizations.find((o: SidebarOrg) => o.id === savedOrgId);
-          setActiveOrg(savedOrg || orgsRes.organizations[0]);
+          const savedOrg = nextOrganizations.find((o: SidebarOrg) => o.id === savedOrgId);
+          const nextActiveOrg = savedOrg || nextOrganizations[0];
+          setActiveOrg(nextActiveOrg);
+          localStorage.setItem("kyte-active-org", nextActiveOrg.id);
         } else {
+          setActiveOrg(null);
+          localStorage.removeItem("kyte-active-org");
           // Only redirect if the request succeeded but returned empty orgs
           if (pathname !== '/onboarding') {
             window.location.href = '/onboarding';
@@ -131,10 +148,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         console.error("Failed to load sidebar data", e);
         // Do NOT redirect on error — the error could be transient
       }
-    })();
-  }, [pathname, apiRequest]);
+      finally {
+        if (!controller.signal.aborted) setOrganizationsLoading(false);
+      }
+      })();
+    }, 0);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [pathname, apiRequest, isLoaded, isSignedIn]);
 
   React.useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     (async () => {
       try {
         const limit = await apiRequest('GET', '/projects/limits');
@@ -143,7 +169,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         console.error("Failed to load project allowance", error);
       }
     })();
-  }, [pathname, apiRequest]);
+  }, [pathname, apiRequest, isLoaded, isSignedIn]);
 
   // Fetch projects scoped to activeOrg whenever activeOrg changes
   React.useEffect(() => {
@@ -233,7 +259,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-300">
                         <Command className="size-3.5" />
                       </div>
-                      <span className="font-semibold text-sm truncate">{activeOrg ? activeOrg.name : 'No Organization'}</span>
+                      <span className="font-semibold text-sm truncate">{organizationsLoading ? 'Loading workspace...' : activeOrg ? activeOrg.name : 'No Organization'}</span>
                     </div>
                     <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
                 </DropdownMenuTrigger>
