@@ -16,12 +16,19 @@ model User {
   githubId           String?              @unique
   username           String?
   avatarUrl          String?
+  role               UserRole             @default(USER)
+  projectLimitOverride Int?
   projects           Project[]
   githubConnections  GitHubConnection[]
   organizationMembers OrganizationMember[]
   notifications      Notification[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }
 
 model Organization {
@@ -191,6 +198,13 @@ model EnvironmentVariable {
   updatedAt      DateTime @updatedAt
 
   @@unique([projectId, key])
+}
+
+model PlatformSettings {
+  id                  String   @id
+  deploymentsPaused   Boolean  @default(false)
+  defaultProjectLimit Int      @default(4)
+  updatedAt           DateTime @updatedAt
 }
 
 model CustomDomain {

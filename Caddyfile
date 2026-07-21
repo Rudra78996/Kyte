@@ -38,6 +38,9 @@ http://*.sites.localhost {
 		-Server
 		-X-Powered-By
 		-Set-Cookie
+		Content-Security-Policy "sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts"
+		Cross-Origin-Opener-Policy "same-origin"
+		Origin-Agent-Cluster "?1"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
@@ -83,17 +86,39 @@ https:// {
 		on_demand
 	}
 
-	header {
-		-Server
-		-X-Powered-By
-		-Set-Cookie
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	@generated_site host *.{$SITES_DOMAIN}
+	handle @generated_site {
+		header {
+			-Server
+			-X-Powered-By
+			-Set-Cookie
+			Content-Security-Policy "sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts"
+			Cross-Origin-Opener-Policy "same-origin"
+			Origin-Agent-Cluster "?1"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		}
+		rewrite * /serve/host/{host}{uri}
+		reverse_proxy api:3000 {
+			header_up -Cookie
+			header_up -Authorization
+		}
 	}
-	rewrite * /serve/host/{host}{uri}
-	reverse_proxy api:3000 {
-		header_up -Cookie
-		header_up -Authorization
+
+	handle {
+		header {
+			-Server
+			-X-Powered-By
+			-Set-Cookie
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		}
+		rewrite * /serve/host/{host}{uri}
+		reverse_proxy api:3000 {
+			header_up -Cookie
+			header_up -Authorization
+		}
 	}
 }

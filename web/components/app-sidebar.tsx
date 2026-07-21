@@ -53,6 +53,7 @@ import {
   Search,
   AppWindow,
   Settings2,
+  ShieldCheck,
 } from "lucide-react"
 
 type RequestError = Error & { status?: number; details?: { suggestedSlug?: string } };
@@ -305,6 +306,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 >
                   <Settings2 />
                   <span>Settings</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname === '/admin'}
+                  tooltip="Admin"
+                  className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                  render={<Link href="/admin" />}
+                >
+                  <ShieldCheck />
+                  <span>Admin</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

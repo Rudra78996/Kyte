@@ -12,6 +12,7 @@ import { encrypt, decrypt } from '../utils/crypto.util';
 import { Prisma } from '@prisma/client';
 
 export const PROJECT_LIMIT = 4;
+const PLATFORM_SETTINGS_ID = 'platform';
 export const WEBHOOK_PROJECT_LIMIT = 1;
 export type ProjectAccessAction = 'read' | 'deploy' | 'manage';
 
@@ -43,13 +44,16 @@ export class ProjectsService {
               throw new NotFoundException('Organization not found');
             }
 
-            const used = await tx.project.count({ where: { userId } });
-            if (used >= PROJECT_LIMIT) {
+            const [used, limit] = await Promise.all([
+              tx.project.count({ where: { userId } }),
+              this.getProjectLimitForUser(tx, userId),
+            ]);
+            if (used >= limit) {
               throw new ForbiddenException({
                 statusCode: 403,
                 code: 'PROJECT_LIMIT_REACHED',
-                message: `You can create up to ${PROJECT_LIMIT} projects. Delete a project before creating another.`,
-                limit: PROJECT_LIMIT,
+                message: `You can create up to ${limit} projects. Delete a project before creating another.`,
+                limit,
                 used,
               });
             }
@@ -104,13 +108,37 @@ export class ProjectsService {
   }
 
   async getProjectLimit(userId: string) {
-    const used = await this.prisma.project.count({ where: { userId } });
+    const [used, limit] = await Promise.all([
+      this.prisma.project.count({ where: { userId } }),
+      this.getProjectLimitForUser(this.prisma, userId),
+    ]);
     return {
-      limit: PROJECT_LIMIT,
+      limit,
       used,
-      remaining: Math.max(0, PROJECT_LIMIT - used),
-      canCreate: used < PROJECT_LIMIT,
+      remaining: Math.max(0, limit - used),
+      canCreate: used < limit,
     };
+  }
+
+  private async getProjectLimitForUser(
+    prisma: PrismaService | Prisma.TransactionClient,
+    userId: string,
+  ) {
+    await prisma.$executeRaw`
+      INSERT INTO "PlatformSettings" ("id", "deploymentsPaused", "defaultProjectLimit", "updatedAt")
+      VALUES (${PLATFORM_SETTINGS_ID}, false, ${PROJECT_LIMIT}, NOW())
+      ON CONFLICT ("id") DO NOTHING
+    `;
+    const [limit] = await prisma.$queryRaw<
+      { projectLimitOverride: number | null; defaultProjectLimit: number }[]
+    >`
+      SELECT u."projectLimitOverride", s."defaultProjectLimit"
+      FROM "User" u
+      CROSS JOIN "PlatformSettings" s
+      WHERE u."id" = ${userId} AND s."id" = ${PLATFORM_SETTINGS_ID}
+      LIMIT 1
+    `;
+    return limit?.projectLimitOverride ?? limit?.defaultProjectLimit ?? PROJECT_LIMIT;
   }
 
   async findAll(userId: string, skip = 0, take = 20, organizationId?: string) {

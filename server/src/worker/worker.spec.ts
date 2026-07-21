@@ -95,9 +95,10 @@ describe('Worker - Environment Variables Injection', () => {
 
   it('should fetch, decrypt, and write environment variables to .env before building', async () => {
     // Setup mock data
-    mockPrisma.deployment.update.mockResolvedValue({
+    const deployment = {
       id: 'dep_1',
       projectId: 'proj_1',
+      status: 'QUEUED',
       repoUrl: 'https://github.com/test/repo',
       branch: 'main',
       s3Prefix: 'prefix',
@@ -109,7 +110,9 @@ describe('Worker - Environment Variables Injection', () => {
         buildCommand: 'npm run build',
         outputDirectory: 'dist',
       },
-    });
+    };
+    mockPrisma.deployment.findUnique.mockResolvedValue(deployment);
+    mockPrisma.deployment.update.mockResolvedValue(deployment);
 
     mockPrisma.environmentVariable.findMany.mockResolvedValue([
       { key: 'API_KEY', encryptedValue: 'enc_1', iv: 'iv_1', authTag: 'tag_1' },
@@ -152,9 +155,10 @@ describe('Worker - Environment Variables Injection', () => {
   });
 
   it('ignores untrusted repository fields in the queue job', async () => {
-    mockPrisma.deployment.update.mockResolvedValue({
+    const deployment = {
       id: 'dep_1',
       projectId: 'proj_1',
+      status: 'QUEUED',
       repoUrl: 'https://github.com/owner/trusted-repo',
       branch: 'main',
       s3Prefix: 'prefix',
@@ -166,7 +170,9 @@ describe('Worker - Environment Variables Injection', () => {
         buildCommand: 'npm run build',
         outputDirectory: 'dist',
       },
-    });
+    };
+    mockPrisma.deployment.findUnique.mockResolvedValue(deployment);
+    mockPrisma.deployment.update.mockResolvedValue(deployment);
     mockPrisma.environmentVariable.findMany.mockResolvedValue([]);
     await processor({
       data: {

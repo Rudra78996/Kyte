@@ -6,6 +6,9 @@ import * as mime from 'mime-types';
 import * as geoip from 'geoip-lite';
 import { requireEnvironment } from '../common/runtime-config';
 
+const GENERATED_SITE_CSP =
+  'sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts';
+
 @Injectable()
 export class ServeService {
   private s3: S3Client;
@@ -24,7 +27,12 @@ export class ServeService {
     });
   }
 
-  async serveFile(projectSlug: string, path: string, res: Response, req: Request) {
+  async serveFile(
+    projectSlug: string,
+    path: string,
+    res: Response,
+    req: Request,
+  ) {
     const project = await this.prisma.project.findUnique({
       where: { subdomain: projectSlug },
       include: { activeDeploy: true },
@@ -34,24 +42,53 @@ export class ServeService {
       if (!project.activeDeploy) {
         throw new NotFoundException('Project has no active deployment');
       }
-      return this.serveDeployment(project.activeDeploy.s3Prefix, project.id, path, res, req);
+      return this.serveDeployment(
+        project.activeDeploy.s3Prefix,
+        project.id,
+        path,
+        res,
+        req,
+        {
+          generatedSite: true,
+        },
+      );
     }
 
-    const deployment = await this.prisma.deployment.findUnique({ where: { id: projectSlug } });
+    const deployment = await this.prisma.deployment.findUnique({
+      where: { id: projectSlug },
+    });
     if (!deployment) {
       throw new NotFoundException('Project or deployment not found');
     }
-    return this.serveDeployment(deployment.s3Prefix, deployment.projectId, path, res, req);
+    return this.serveDeployment(
+      deployment.s3Prefix,
+      deployment.projectId,
+      path,
+      res,
+      req,
+      {
+        generatedSite: true,
+      },
+    );
   }
 
-  async serveCustomDomain(domainName: string, path: string, res: Response, req: Request) {
+  async serveCustomDomain(
+    domainName: string,
+    path: string,
+    res: Response,
+    req: Request,
+  ) {
     const normalizedDomain = domainName.trim().toLowerCase().replace(/\.$/, '');
     const domain = await this.prisma.customDomain.findUnique({
       where: { domainName: normalizedDomain },
       include: { project: { include: { activeDeploy: true } } },
     });
 
-    if (!domain || domain.status !== 'verified' || !domain.project.activeDeploy) {
+    if (
+      !domain ||
+      domain.status !== 'verified' ||
+      !domain.project.activeDeploy
+    ) {
       throw new NotFoundException('Custom domain not found');
     }
 
@@ -87,7 +124,14 @@ export class ServeService {
     return this.serveCustomDomain(normalizedHost, path, res, req);
   }
 
-  private async serveDeployment(prefix: string, projectId: string, path: string, res: Response, req: Request) {
+  private async serveDeployment(
+    prefix: string,
+    projectId: string,
+    path: string,
+    res: Response,
+    req: Request,
+    options: { generatedSite?: boolean } = {},
+  ) {
     const startTime = performance.now();
 
     // Default to index.html if path is empty or a directory
@@ -120,48 +164,76 @@ export class ServeService {
       }
     }
 
-    const contentType = s3Response.ContentType || mime.lookup(targetPath) || 'application/octet-stream';
+    const contentType =
+      s3Response.ContentType ||
+      mime.lookup(targetPath) ||
+      'application/octet-stream';
     res.setHeader('Content-Type', contentType);
+    res.removeHeader('Set-Cookie');
+    if (options.generatedSite) {
+      res.setHeader('Content-Security-Policy', GENERATED_SITE_CSP);
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Origin-Agent-Cluster', '?1');
+    }
     if (s3Response.CacheControl) {
       res.setHeader('Cache-Control', s3Response.CacheControl);
     }
 
     res.on('finish', () => {
       const responseTime = Math.round(performance.now() - startTime);
-      
-      let ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '127.0.0.1';
+
+      let ip =
+        (req.headers['x-forwarded-for'] as string) ||
+        req.socket.remoteAddress ||
+        '127.0.0.1';
       if (ip.includes(',')) ip = ip.split(',')[0].trim();
-      
+
       let country = null;
       let countryCode = null;
       if (ip) {
         const geo = geoip.lookup(ip);
         if (geo) {
           countryCode = geo.country;
-          const displayNames: Record<string, string> = { US: 'United States', IN: 'India', GB: 'United Kingdom', DE: 'Germany', FR: 'France', CA: 'Canada', AU: 'Australia' };
+          const displayNames: Record<string, string> = {
+            US: 'United States',
+            IN: 'India',
+            GB: 'United Kingdom',
+            DE: 'Germany',
+            FR: 'France',
+            CA: 'Canada',
+            AU: 'Australia',
+          };
           country = displayNames[geo.country] || geo.country;
-        } else if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('172.')) {
+        } else if (
+          ip === '127.0.0.1' ||
+          ip === '::1' ||
+          ip.startsWith('172.')
+        ) {
           countryCode = 'US';
           country = 'United States (Local)';
         }
       }
 
       if (projectId) {
-        const isAsset = targetPath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i);
-        
+        const isAsset = targetPath.match(
+          /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i,
+        );
+
         if (!isAsset) {
-          this.prisma.requestLog.create({
-            data: {
-              projectId,
-              method: req.method,
-              path: '/' + targetPath,
-              statusCode: res.statusCode,
-              responseTime,
-              ipAddress: ip,
-              countryCode,
-              country
-            }
-          }).catch(err => console.error("Failed to log request:", err));
+          this.prisma.requestLog
+            .create({
+              data: {
+                projectId,
+                method: req.method,
+                path: '/' + targetPath,
+                statusCode: res.statusCode,
+                responseTime,
+                ipAddress: ip,
+                countryCode,
+                country,
+              },
+            })
+            .catch((err) => console.error('Failed to log request:', err));
         }
       }
     });

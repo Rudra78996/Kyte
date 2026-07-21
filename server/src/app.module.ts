@@ -13,6 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { AdminModule } from './admin/admin.module';
 
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
@@ -49,6 +50,7 @@ import { requireAuthenticatedRedisUrl } from './common/runtime-config';
     DeploymentsModule,
     ServeModule,
     WebhooksModule,
+    AdminModule,
   ],
   controllers: [AppController, CaddyController],
   providers: [

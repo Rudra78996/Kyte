@@ -20,6 +20,7 @@ import { requireAuthenticatedRedisUrl } from '../common/runtime-config';
 
 export const MAX_ACTIVE_DEPLOYMENTS = 2;
 export const MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS = 30;
+const PLATFORM_SETTINGS_ID = 'platform';
 const WEBHOOK_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 const QUEUE_JOB_OPTIONS = {
   attempts: 2,
@@ -151,6 +152,25 @@ export class DeploymentsService implements OnModuleInit, OnModuleDestroy {
     triggerSource: DeploymentTrigger;
     deduplicate: boolean;
   }) {
+    await this.prisma.$executeRaw`
+      INSERT INTO "PlatformSettings" ("id", "deploymentsPaused", "defaultProjectLimit", "updatedAt")
+      VALUES (${PLATFORM_SETTINGS_ID}, false, 4, NOW())
+      ON CONFLICT ("id") DO NOTHING
+    `;
+    const [settings] = await this.prisma.$queryRaw<
+      { deploymentsPaused: boolean }[]
+    >`
+      SELECT "deploymentsPaused"
+      FROM "PlatformSettings"
+      WHERE "id" = ${PLATFORM_SETTINGS_ID}
+      LIMIT 1
+    `;
+    if (settings.deploymentsPaused) {
+      throw new BadRequestException(
+        'New deployments are temporarily paused by the platform administrator.',
+      );
+    }
+
     let result:
       | {
           deployment: Awaited<ReturnType<typeof this.prisma.deployment.create>>;

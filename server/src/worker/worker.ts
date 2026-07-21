@@ -48,6 +48,17 @@ const worker = new Worker(
       throw new Error('Build job is missing a valid deployment ID');
     }
 
+    const queuedDeployment = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      include: { project: true },
+    });
+    if (!queuedDeployment) {
+      throw new Error('Deployment not found');
+    }
+    if (queuedDeployment.status === 'CANCELED') {
+      console.log(`[worker] Skipping canceled deploy ${deploymentId}`);
+      return;
+    }
     const deployment = await prisma.deployment.update({
       where: { id: deploymentId },
       data: { status: 'BUILDING' },
@@ -134,6 +145,15 @@ const worker = new Worker(
         throw new Error(buildResult.error || 'Isolated build failed');
       }
 
+      const afterBuild = await prisma.deployment.findUnique({
+        where: { id: deploymentId },
+        select: { status: true },
+      });
+      if (afterBuild?.status === 'CANCELED') {
+        publishLog('Deployment canceled by administrator.\n', 'STDOUT');
+        return;
+      }
+
       publishLog('Starting upload...\n', 'STDOUT');
       await prisma.deployment.update({
         where: { id: deploymentId },
@@ -167,6 +187,15 @@ const worker = new Worker(
         publishLog(msg + '\n', 'STDOUT'),
       );
 
+      const beforeSuccess = await prisma.deployment.findUnique({
+        where: { id: deploymentId },
+        select: { status: true },
+      });
+      if (beforeSuccess?.status === 'CANCELED') {
+        publishLog('Deployment canceled by administrator.\n', 'STDOUT');
+        return;
+      }
+
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: { status: 'SUCCESS' },
@@ -189,6 +218,14 @@ const worker = new Worker(
         },
       });
     } catch (err: any) {
+      const currentDeployment = await prisma.deployment.findUnique({
+        where: { id: deploymentId },
+        select: { status: true },
+      });
+      if (currentDeployment?.status === 'CANCELED') {
+        publishLog('Deployment canceled by administrator.\n', 'STDOUT');
+        return;
+      }
       publishLog(`Build failed: ${err.message}\n`, 'STDERR');
       await prisma.deployment.update({
         where: { id: deploymentId },
