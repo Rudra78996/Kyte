@@ -9,8 +9,8 @@
 	}
 }
 
-# Kyte dashboard and API. Replace app.example.com with BASE_DOMAIN.
-app.example.com {
+# Kyte dashboard and API. For the one-domain setup use app.kyte.rudrx.cloud.
+app.kyte.rudrx.cloud {
 	header {
 		-Server
 		-X-Powered-By
@@ -52,17 +52,42 @@ https:// {
 		on_demand
 	}
 
-	header {
-		-Server
-		-X-Powered-By
-		-Set-Cookie
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	# Generated subdomains are untrusted even when they share the same
+	# registered domain as the dashboard. The sandbox intentionally omits
+	# allow-same-origin so project JavaScript cannot set parent-domain cookies.
+	@generated_site host *.site.kyte.rudrx.cloud
+	handle @generated_site {
+		header {
+			-Server
+			-X-Powered-By
+			-Set-Cookie
+			Content-Security-Policy "sandbox allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-scripts"
+			Cross-Origin-Opener-Policy "same-origin"
+			Origin-Agent-Cluster "?1"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		}
+		rewrite * /serve/host/{host}{uri}
+		reverse_proxy 127.0.0.1:3000 {
+			header_up -Cookie
+			header_up -Authorization
+		}
 	}
-	rewrite * /serve/host/{host}{uri}
-	reverse_proxy 127.0.0.1:3000 {
-		header_up -Cookie
-		header_up -Authorization
+
+	handle {
+		header {
+			-Server
+			-X-Powered-By
+			-Set-Cookie
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		}
+		rewrite * /serve/host/{host}{uri}
+		reverse_proxy 127.0.0.1:3000 {
+			header_up -Cookie
+			header_up -Authorization
+		}
 	}
 }

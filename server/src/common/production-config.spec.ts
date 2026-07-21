@@ -4,9 +4,10 @@ const validProductionEnvironment = {
   NODE_ENV: 'production',
   BASE_DOMAIN: 'app.example.com',
   SITES_DOMAIN: 'sites.example.com',
-  DOMAIN_CNAME_TARGET: 'app.example.com',
+  DOMAIN_CNAME_TARGET: 'origin.example.com',
   DASHBOARD_ORIGINS: 'https://app.example.com',
   CLERK_AUTHORIZED_PARTIES: 'https://app.example.com',
+  ADMIN_EMAILS: 'owner@kyte.example',
   NEXT_PUBLIC_API_BASE_URL: 'https://app.example.com/api',
   GITHUB_CALLBACK_URL: 'https://app.example.com/github/callback',
   WEBHOOK_CALLBACK_URL: 'https://app.example.com/api/webhooks/github',
@@ -31,6 +32,24 @@ describe('production configuration', () => {
     ).not.toThrow();
   });
 
+  it('accepts a dedicated generated-site zone under the same owned domain', () => {
+    expect(() =>
+      assertProductionConfiguration({
+        ...validProductionEnvironment,
+        BASE_DOMAIN: 'app.kyte.rudrx.cloud',
+        SITES_DOMAIN: 'site.kyte.rudrx.cloud',
+        DOMAIN_CNAME_TARGET: 'origin.kyte.rudrx.cloud',
+        DASHBOARD_ORIGINS: 'https://app.kyte.rudrx.cloud',
+        CLERK_AUTHORIZED_PARTIES: 'https://app.kyte.rudrx.cloud',
+        NEXT_PUBLIC_API_BASE_URL: 'https://app.kyte.rudrx.cloud/api',
+        GITHUB_CALLBACK_URL: 'https://app.kyte.rudrx.cloud/github/callback',
+        WEBHOOK_CALLBACK_URL:
+          'https://app.kyte.rudrx.cloud/api/webhooks/github',
+        NEXT_PUBLIC_SITES_DOMAIN: 'site.kyte.rudrx.cloud',
+      }),
+    ).not.toThrow();
+  });
+
   it('does nothing outside production', () => {
     expect(() =>
       assertProductionConfiguration({ NODE_ENV: 'development' }),
@@ -40,8 +59,12 @@ describe('production configuration', () => {
   it.each([
     ['BASE_DOMAIN', 'localhost'],
     ['SITES_DOMAIN', 'app.example.com'],
+    ['DOMAIN_CNAME_TARGET', 'app.example.com'],
+    ['DOMAIN_CNAME_TARGET', 'origin.sites.example.com'],
     ['DASHBOARD_ORIGINS', 'https://app.example.com,https://attacker.example'],
     ['CLERK_AUTHORIZED_PARTIES', 'https://attacker.example'],
+    ['ADMIN_EMAILS', 'admin@example.com'],
+    ['ADMIN_EMAILS', 'not-an-email'],
     ['NEXT_PUBLIC_API_BASE_URL', 'http://app.example.com/api'],
     ['GITHUB_CALLBACK_URL', 'https://attacker.example/github/callback'],
     ['WEBHOOK_CALLBACK_URL', 'http://app.example.com/api/webhooks/github'],

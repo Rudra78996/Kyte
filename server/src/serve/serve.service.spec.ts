@@ -79,4 +79,59 @@ describe('deployed-site hostname isolation', () => {
       expect.anything(),
     );
   });
+
+  it('applies sandbox headers to generated site responses', async () => {
+    const body = {
+      pipe: jest.fn(),
+    };
+    service = new ServeService({
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'project-id',
+          activeDeploy: { s3Prefix: 'deployments/project-id/current' },
+        }),
+      },
+      deployment: { findUnique: jest.fn() },
+      requestLog: { create: jest.fn().mockResolvedValue(undefined) },
+    } as never);
+    (service as any).s3 = {
+      send: jest.fn().mockResolvedValue({
+        Body: body,
+        ContentType: 'text/html',
+      }),
+    };
+
+    const res = {
+      setHeader: jest.fn(),
+      removeHeader: jest.fn(),
+      on: jest.fn(),
+      statusCode: 200,
+    };
+
+    await service.serveFile(
+      'demo',
+      '',
+      res as never,
+      {
+        method: 'GET',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as never,
+    );
+
+    expect(res.removeHeader).toHaveBeenCalledWith('Set-Cookie');
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Security-Policy',
+      expect.stringContaining('sandbox'),
+    );
+    expect(res.setHeader).not.toHaveBeenCalledWith(
+      'Content-Security-Policy',
+      expect.stringContaining('allow-same-origin'),
+    );
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Cross-Origin-Opener-Policy',
+      'same-origin',
+    );
+    expect(res.setHeader).toHaveBeenCalledWith('Origin-Agent-Cluster', '?1');
+  });
 });

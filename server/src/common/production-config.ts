@@ -33,6 +33,10 @@ function productionHostname(env: ProductionEnvironment, name: string): string {
   return hostname;
 }
 
+function isSubdomainOf(hostname: string, parentDomain: string): boolean {
+  return hostname !== parentDomain && hostname.endsWith(`.${parentDomain}`);
+}
+
 function requireExactUrl(
   env: ProductionEnvironment,
   name: string,
@@ -70,10 +74,28 @@ export function assertProductionConfiguration(
 
   const baseDomain = productionHostname(env, 'BASE_DOMAIN');
   const sitesDomain = productionHostname(env, 'SITES_DOMAIN');
-  productionHostname(env, 'DOMAIN_CNAME_TARGET');
+  const domainCnameTarget = productionHostname(env, 'DOMAIN_CNAME_TARGET');
   if (baseDomain === sitesDomain) {
     throw new Error(
       'SITES_DOMAIN must be different from BASE_DOMAIN in production',
+    );
+  }
+  if (isSubdomainOf(baseDomain, sitesDomain)) {
+    throw new Error(
+      'BASE_DOMAIN must not be inside the untrusted SITES_DOMAIN zone',
+    );
+  }
+  if (domainCnameTarget === baseDomain) {
+    throw new Error(
+      'DOMAIN_CNAME_TARGET must be a dedicated origin hostname, not BASE_DOMAIN',
+    );
+  }
+  if (
+    domainCnameTarget === sitesDomain ||
+    isSubdomainOf(domainCnameTarget, sitesDomain)
+  ) {
+    throw new Error(
+      'DOMAIN_CNAME_TARGET must not be inside the untrusted SITES_DOMAIN zone',
     );
   }
 
@@ -98,6 +120,23 @@ export function assertProductionConfiguration(
   ) {
     throw new Error(
       `CLERK_AUTHORIZED_PARTIES must contain only ${dashboardOrigin} in production`,
+    );
+  }
+
+  const adminEmails = required(env, 'ADMIN_EMAILS')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    adminEmails.length === 0 ||
+    adminEmails.some(
+      (email) =>
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        email.endsWith('@example.com'),
+    )
+  ) {
+    throw new Error(
+      'ADMIN_EMAILS must contain at least one real production admin email',
     );
   }
 
