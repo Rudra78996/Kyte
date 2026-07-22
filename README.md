@@ -1,157 +1,54 @@
 # Kyte
 
-Kyte is a self-hosted frontend deployment platform for turning GitHub repositories into production websites. Connect a project, follow the build in real time, and publish it with an HTTPS URL from one workspace.
+Kyte is a frontend deployment platform that turns GitHub repositories into production websites. It brings project configuration, builds, deployments, domains, and operational visibility into one focused workspace.
 
-It is built for developers and small teams that want a focused deployment workflow without maintaining separate CI pipelines, build infrastructure, object storage, and routing by hand.
+The product is designed for developers and small teams that want a clear path from `git push` to a live HTTPS deployment without maintaining a separate CI pipeline or assembling several infrastructure services themselves.
 
-## What Kyte provides
+## Hosted product
 
-- **GitHub integration** - import repositories and automatically deploy pushes from a selected production branch.
-- **Isolated builds** - install dependencies and compile each application inside a dedicated build environment.
-- **Live build logs** - watch builds as they happen and retain logs for failed deployments.
-- **Deployment history** - review commits, build duration, status, and previously published versions.
-- **Project URLs and HTTPS** - publish successful builds to a Kyte subdomain with automatic TLS.
-- **Custom domains** - connect and verify a domain from the project workspace.
-- **Environment variables** - manage project configuration without committing secrets to a repository.
-- **Organizations** - group projects and deployments inside team workspaces.
-- **Observability** - inspect traffic, latency, deployment health, and operational activity.
-- **Operational safeguards** - signed GitHub webhooks, encrypted credentials, deployment concurrency controls, and webhook build limits.
+- [Kyte](https://app.kyte.rudrx.cloud)
+- [Documentation](https://app.kyte.rudrx.cloud/docs)
+- [Dashboard](https://app.kyte.rudrx.cloud/dashboard)
+- [Contact](https://app.kyte.rudrx.cloud/contact)
 
-## Product workflow
-
-1. Sign in and create or select an organization.
-2. Connect GitHub or provide a public repository.
-3. Configure the branch, build command, output directory, and environment variables.
-4. Start a deployment and follow its live logs.
-5. Open the generated Kyte URL or attach a custom domain.
-6. Enable GitHub automation for future pushes.
-
-## Application links
-
-When running locally through Docker Compose:
-
-| Destination | URL |
-| --- | --- |
-| Landing page | [http://localhost](http://localhost) |
-| Dashboard | [http://localhost/dashboard](http://localhost/dashboard) |
-| Create project | [http://localhost/new](http://localhost/new) |
-| Documentation | [http://localhost/docs](http://localhost/docs) |
-| Contact | [http://localhost/contact](http://localhost/contact) |
-| Sign in | [http://localhost/sign-in](http://localhost/sign-in) |
-| Sign up | [http://localhost/sign-up](http://localhost/sign-up) |
-| API health | [http://localhost/api/health](http://localhost/api/health) |
-| MinIO console | [http://localhost:9001](http://localhost:9001) |
-
-The Next.js development server is also available directly at [http://localhost:3002](http://localhost:3002) when its port is exposed.
-
-## Documentation
-
-- [Documentation overview](http://localhost/docs)
-- [GitHub integration](http://localhost/docs/github)
-- [Organizations](http://localhost/docs/organizations)
-- [Next.js deployments](http://localhost/docs/nextjs)
-- [React deployments](http://localhost/docs/react)
-- [Vue deployments](http://localhost/docs/vue)
-- [Continuous deployment](http://localhost/docs/ci-cd)
-- [Observability](http://localhost/docs/observability)
-- [Custom domains](http://localhost/docs/custom-domains)
 
 ## Architecture
 
-```text
-Browser
-  |
-Caddy gateway
-  |-- Next.js web application
-  |-- NestJS API
-  |-- Published project sites
+Kyte separates the product interface, control plane, deployment pipeline, build execution, and published sites.
 
-NestJS API
-  |-- PostgreSQL for application data
-  |-- Redis and BullMQ for deployment jobs
-  |-- MinIO for build artifacts and published assets
-  |-- Worker and isolated build runner
-```
+![Kyte architecture showing the flow from a developer and GitHub through the web application, API, deployment worker, isolated build runner, storage, and published sites.](/assets/arc.png)
 
-The repository is organized into:
+The web application is the entry point for developers. The API coordinates product data and deployment jobs, workers move builds through an isolated runner, and successful artifacts are stored and published to HTTPS project URLs.
 
-| Path | Purpose |
+## Repository structure
+
+| Path | Responsibility |
 | --- | --- |
-| [`web/`](web/) | Next.js landing page, dashboard, authentication, and documentation |
-| [`server/`](server/) | NestJS API, worker, build runner, Prisma schema, and deployment services |
-| [`infra/`](infra/) | Gateway, storage, image, and least-privilege infrastructure assets |
-| [`docker-compose.yml`](docker-compose.yml) | Local application and infrastructure stack |
-| [`.env.example`](.env.example) | Required environment variables and local defaults |
+| [`web/`](web/) | Product website, dashboard, authentication, and documentation |
+| [`server/`](server/) | API, deployment worker, build runner, and persistence layer |
+| [`infra/`](infra/) | Gateway, storage, security, and infrastructure assets |
+| [`docker-compose.yml`](docker-compose.yml) | Complete service topology |
 
-## Local development
+## Technology
 
-### Requirements
+<p align="left"> <img alt="Next.js" src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white"> <img alt="React" src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"> <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white"> <img alt="NestJS" src="https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white"> <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white"> <img alt="Prisma" src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white"> <img alt="Redis" src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white"> <img alt="BullMQ" src="https://img.shields.io/badge/BullMQ-DC382D?style=for-the-badge&logo=redis&logoColor=white"> <br> <img alt="MinIO" src="https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white"> <img alt="Caddy" src="https://img.shields.io/badge/Caddy-1F88C0?style=for-the-badge&logo=caddy&logoColor=white"> <img alt="Clerk" src="https://img.shields.io/badge/Clerk-6C47FF?style=for-the-badge&logo=clerk&logoColor=white"> <img alt="GitHub OAuth" src="https://img.shields.io/badge/GitHub_OAuth-181717?style=for-the-badge&logo=github&logoColor=white"> </p>
 
-- Docker with Docker Compose
-- Node.js and npm for running individual services outside Docker
-- A Clerk development application
-- A GitHub OAuth application for repository access and automatic deployments
+## Features
 
-### Start the complete stack
+| Deploy from GitHub | Follow every build |
+| --- | --- |
+| Connect a repository, select the production branch, and deploy automatically when new code is pushed. | Stream build output in real time and keep the commit, status, duration, and logs together. |
+| **Publish without downtime** | **Configure in one place** |
+| Keep the last successful release live when a new build fails. Every successful release receives an HTTPS project URL. | Manage build settings, environment variables, automation, production branches, and domains from one project workspace. |
+| **Bring your own domain** | **Work as a team** |
+| Verify a custom domain and let Kyte handle secure delivery through the same deployment workflow. | Organize projects and deployments in shared workspaces with a clear view of recent activity. |
+| **See what is happening** | **Ship with guardrails** |
+| Understand deployment health, traffic, latency, and operational events without leaving the product. | Rely on signed webhooks, encrypted credentials, isolated builds, concurrency controls, and sensible build limits. |
 
-1. Create the local environment file:
+## How Kyte works
 
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Fill in the required credentials and generate independent secrets as described in [`.env.example`](.env.example).
-
-3. Start Kyte:
-
-   ```bash
-   docker compose up --build
-   ```
-
-4. Open [http://localhost](http://localhost).
-
-### Run the web application
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-Useful commands:
-
-```bash
-npm run lint
-npm run build
-npm run test:auth
-```
-
-### Run the API
-
-```bash
-cd server
-npm install
-npx prisma generate
-npm run start:dev
-```
-
-Useful commands:
-
-```bash
-npm run build
-npm test
-npm run test:e2e
-npm run security:preflight
-```
-
-## Configuration notes
-
-- Never reuse development credentials in production.
-- Generate separate values for database, Redis, MinIO, webhook, and encryption secrets.
-- `WEBHOOK_CALLBACK_URL` must be a public HTTPS endpoint that GitHub can reach.
-- `NEXT_PUBLIC_SITES_DOMAIN`, `SITES_DOMAIN`, and DNS must agree for published project URLs.
-- Review the production attestation variables in [`.env.example`](.env.example) before a release.
-
-## Current scope
-
-Kyte currently focuses on frontend applications that produce static output. The platform is private software and the server package is marked `UNLICENSED`; no permission to redistribute or reuse the source is granted unless the repository owner provides it separately.
+1. Create a workspace and connect a repository.
+2. Confirm the detected framework and build configuration.
+3. Deploy and follow the live build output.
+4. Publish the successful result to an HTTPS project URL.
+5. Attach a custom domain or enable automatic deployments for future pushes.
