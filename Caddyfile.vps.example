@@ -1,6 +1,6 @@
 {
 	# Set this in /etc/caddy/Caddyfile for ACME account notifications.
-	email admin@example.com
+	email rudra568433@gmail.com
 
 	# This must appear only once in a shared Caddyfile. It protects Kyte's
 	# catch-all custom-domain TLS block from certificate-issuance abuse.
@@ -37,13 +37,13 @@ app.kyte.rudrx.cloud {
 }
 
 # Other applications use their own fixed hostname blocks. Add one per project.
-blog.example.com {
-	reverse_proxy 127.0.0.1:4000
-}
+# blog.example.com {
+#	reverse_proxy 127.0.0.1:4000
+#}
 
-status.example.com {
-	reverse_proxy 127.0.0.1:4100
-}
+#status.example.com {
+#	reverse_proxy 127.0.0.1:4100
+#}
 
 # Kyte generated subdomains and verified customer domains. Keep this generic
 # block after all fixed hostnames for the other applications on this VPS.
@@ -61,6 +61,7 @@ https:// {
 			-Server
 			-X-Powered-By
 			-Set-Cookie
+			-X-Frame-Options
 			-Content-Security-Policy
 			-Cross-Origin-Opener-Policy
 			-Origin-Agent-Cluster

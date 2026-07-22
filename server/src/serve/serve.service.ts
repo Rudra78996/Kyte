@@ -6,6 +6,46 @@ import * as mime from 'mime-types';
 import * as geoip from 'geoip-lite';
 import { requireEnvironment } from '../common/runtime-config';
 
+const AUTOMATED_USER_AGENT =
+  /bot|crawler|spider|slurp|bingpreview|facebookexternalhit|headless|lighthouse|pagespeed|pingdom|uptimerobot|statuscake|healthcheck|monitoring|scanner|curl|wget|httpie|postman|insomnia|python-requests|python-urllib|axios|node-fetch|undici|go-http-client|java\//i;
+
+function firstHeaderValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function isTrackablePageView(
+  req: Request,
+  statusCode: number,
+  contentType: string,
+) {
+  if (req.method !== 'GET' || statusCode < 200 || statusCode >= 400) {
+    return false;
+  }
+
+  if (!contentType.toLowerCase().startsWith('text/html')) return false;
+
+  const query = req.query as Record<string, unknown> | undefined;
+  if (query?.__kyte_preview !== undefined) return false;
+
+  const userAgent = firstHeaderValue(req.headers['user-agent'])?.trim();
+  if (!userAgent || AUTOMATED_USER_AGENT.test(userAgent)) return false;
+
+  const purpose = `${firstHeaderValue(req.headers.purpose) || ''} ${
+    firstHeaderValue(req.headers['sec-purpose']) || ''
+  }`;
+  if (/prefetch|prerender/i.test(purpose)) return false;
+
+  const fetchDest = firstHeaderValue(req.headers['sec-fetch-dest']);
+  if (fetchDest !== 'document' && fetchDest !== 'iframe') {
+    return false;
+  }
+
+  const fetchMode = firstHeaderValue(req.headers['sec-fetch-mode']);
+  if (fetchMode && fetchMode !== 'navigate') return false;
+
+  return true;
+}
+
 @Injectable()
 export class ServeService {
   private s3: S3Client;
@@ -123,6 +163,7 @@ export class ServeService {
     req: Request,
   ) {
     const startTime = performance.now();
+    const requestedPath = path || '';
 
     // Default to index.html if path is empty or a directory
     let targetPath = path || 'index.html';
@@ -160,6 +201,9 @@ export class ServeService {
       'application/octet-stream';
     res.setHeader('Content-Type', contentType);
     res.removeHeader('Set-Cookie');
+    // Helmet protects the Kyte API from framing, but deployed customer sites
+    // must be frameable by Kyte's cross-origin preview surface.
+    res.removeHeader('X-Frame-Options');
     if (s3Response.CacheControl) {
       res.setHeader('Cache-Control', s3Response.CacheControl);
     }
@@ -168,7 +212,8 @@ export class ServeService {
       const responseTime = Math.round(performance.now() - startTime);
 
       let ip =
-        (req.headers['x-forwarded-for'] as string) ||
+        firstHeaderValue(req.headers['cf-connecting-ip']) ||
+        firstHeaderValue(req.headers['x-forwarded-for']) ||
         req.socket.remoteAddress ||
         '127.0.0.1';
       if (ip.includes(',')) ip = ip.split(',')[0].trim();
@@ -176,50 +221,43 @@ export class ServeService {
       let country = null;
       let countryCode = null;
       if (ip) {
+        const cloudflareCountry = firstHeaderValue(
+          req.headers['cf-ipcountry'],
+        )?.toUpperCase();
         const geo = geoip.lookup(ip);
-        if (geo) {
-          countryCode = geo.country;
-          const displayNames: Record<string, string> = {
-            US: 'United States',
-            IN: 'India',
-            GB: 'United Kingdom',
-            DE: 'Germany',
-            FR: 'France',
-            CA: 'Canada',
-            AU: 'Australia',
-          };
-          country = displayNames[geo.country] || geo.country;
-        } else if (
-          ip === '127.0.0.1' ||
-          ip === '::1' ||
-          ip.startsWith('172.')
-        ) {
-          countryCode = 'US';
-          country = 'United States (Local)';
+        const resolvedCountryCode =
+          cloudflareCountry && !['XX', 'T1'].includes(cloudflareCountry)
+            ? cloudflareCountry
+            : geo?.country;
+        if (resolvedCountryCode) {
+          countryCode = resolvedCountryCode;
+          try {
+            country =
+              new Intl.DisplayNames(['en'], { type: 'region' }).of(
+                resolvedCountryCode,
+              ) || resolvedCountryCode;
+          } catch {
+            country = resolvedCountryCode;
+          }
         }
       }
 
-      if (projectId) {
-        const isAsset = targetPath.match(
-          /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i,
-        );
-
-        if (!isAsset) {
-          this.prisma.requestLog
-            .create({
-              data: {
-                projectId,
-                method: req.method,
-                path: '/' + targetPath,
-                statusCode: res.statusCode,
-                responseTime,
-                ipAddress: ip,
-                countryCode,
-                country,
-              },
-            })
-            .catch((err) => console.error('Failed to log request:', err));
-        }
+      if (projectId && isTrackablePageView(req, res.statusCode, contentType)) {
+        this.prisma.requestLog
+          .create({
+            data: {
+              projectId,
+              method: req.method,
+              path: requestedPath ? `/${requestedPath}` : '/',
+              statusCode: res.statusCode,
+              responseTime,
+              ipAddress: ip,
+              countryCode,
+              country,
+              isPageView: true,
+            },
+          })
+          .catch((err) => console.error('Failed to log request:', err));
       }
     });
 

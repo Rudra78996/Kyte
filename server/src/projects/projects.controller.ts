@@ -18,7 +18,7 @@ import {
 } from './dto/project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { ProjectListQueryDto } from '../common/request.dto';
+import { MetricsQueryDto, ProjectListQueryDto } from '../common/request.dto';
 import {
   EnvironmentKeyPipe,
   ResourceIdPipe,
@@ -76,8 +76,9 @@ export class ProjectsController {
   async getMetrics(
     @CurrentUser('id') userId: string,
     @Param('id', ResourceIdPipe) projectId: string,
+    @Query() query: MetricsQueryDto,
   ) {
-    return this.projectsService.getMetrics(userId, projectId);
+    return this.projectsService.getMetrics(userId, projectId, query.days);
   }
 
   @Post(':id/webhook/enable')

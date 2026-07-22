@@ -32,6 +32,7 @@ export class AuthService implements OnModuleDestroy {
   ): Promise<{
     id: string;
     email: string;
+    isAdmin: boolean;
     githubConnected: boolean;
     githubUsername?: string;
   }> {
@@ -40,6 +41,7 @@ export class AuthService implements OnModuleDestroy {
       select: {
         id: true,
         email: true,
+        role: true,
         githubConnections: {
           select: {
             githubUsername: true,
@@ -63,6 +65,13 @@ export class AuthService implements OnModuleDestroy {
     return {
       id: account.id,
       email: account.email,
+      isAdmin:
+        account.role === 'ADMIN' ||
+        (process.env.ADMIN_EMAILS || '')
+          .split(',')
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean)
+          .includes(account.email.toLowerCase()),
       githubConnected,
       githubUsername: githubConnected
         ? githubConn?.githubUsername

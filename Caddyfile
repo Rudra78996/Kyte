@@ -38,6 +38,7 @@ http://*.sites.localhost {
 		-Server
 		-X-Powered-By
 		-Set-Cookie
+		-X-Frame-Options
 		-Content-Security-Policy
 		-Cross-Origin-Opener-Policy
 		-Origin-Agent-Cluster
@@ -92,6 +93,7 @@ https:// {
 			-Server
 			-X-Powered-By
 			-Set-Cookie
+			-X-Frame-Options
 			-Content-Security-Policy
 			-Cross-Origin-Opener-Policy
 			-Origin-Agent-Cluster

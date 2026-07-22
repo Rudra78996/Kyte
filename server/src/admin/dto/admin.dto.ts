@@ -26,7 +26,7 @@ export class UpdateAdminUserDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  projectLimitOverride?: number;
+  projectLimitOverride?: number | null;
 }
 
 export class UpdatePlatformSettingsDto {

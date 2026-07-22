@@ -92,6 +92,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [organizations, setOrganizations] = React.useState<SidebarOrg[]>([]);
   const [organizationsLoading, setOrganizationsLoading] = React.useState(true);
   const [projectLimit, setProjectLimit] = React.useState<ProjectLimit | null>(null);
+  const [isAdmin, setIsAdmin] = React.useState(false);
   const [projectSearch, setProjectSearch] = React.useState("");
   
   // Read initial activeOrg from localStorage if available
@@ -163,8 +164,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (!isLoaded || !isSignedIn) return;
     (async () => {
       try {
-        const limit = await apiRequest('GET', '/projects/limits');
+        const [limit, account] = await Promise.all([
+          apiRequest('GET', '/projects/limits'),
+          apiRequest('GET', '/auth/me'),
+        ]);
         setProjectLimit(limit);
+        setIsAdmin(Boolean(account.isAdmin));
       } catch (error) {
         console.error("Failed to load project allowance", error);
       }
@@ -334,17 +339,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <span>Settings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname === '/admin'}
-                  tooltip="Admin"
-                  className="h-9 rounded-md px-2.5 text-[13px] font-medium"
-                  render={<Link href="/admin" />}
-                >
-                  <ShieldCheck />
-                  <span>Admin</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === '/admin'}
+                    tooltip="Admin"
+                    className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                    render={<Link href="/admin" />}
+                  >
+                    <ShieldCheck />
+                    <span>Admin</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroup>
           <SidebarGroup className="mt-5 px-0 py-0 flex-1 min-h-0 flex flex-col">
