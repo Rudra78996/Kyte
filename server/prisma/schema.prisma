@@ -9,21 +9,21 @@ datasource db {
 }
 
 model User {
-  id                 String               @id @default(cuid())
-  email              String               @unique
-  passwordHash       String?
-  clerkId            String?              @unique
-  githubId           String?              @unique
-  username           String?
-  avatarUrl          String?
-  role               UserRole             @default(USER)
+  id                   String               @id @default(cuid())
+  email                String               @unique
+  passwordHash         String?
+  clerkId              String?              @unique
+  githubId             String?              @unique
+  username             String?
+  avatarUrl            String?
+  role                 UserRole             @default(USER)
   projectLimitOverride Int?
-  projects           Project[]
-  githubConnections  GitHubConnection[]
-  organizationMembers OrganizationMember[]
-  notifications      Notification[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  projects             Project[]
+  githubConnections    GitHubConnection[]
+  organizationMembers  OrganizationMember[]
+  notifications        Notification[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 }
 
 enum UserRole {
@@ -42,13 +42,13 @@ model Organization {
 }
 
 model OrganizationMember {
-  id             String       @id @default(cuid())
+  id             String           @id @default(cuid())
   organizationId String
   userId         String
   role           OrganizationRole @default(MEMBER)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
 
   @@unique([organizationId, userId])
 }
@@ -61,31 +61,31 @@ enum OrganizationRole {
 
 model Project {
   /// A partial unique database index permits only one non-null webhookId per user.
-  id               String             @id @default(cuid())
-  name             String
-  description      String?
-  repoUrl          String
-  subdomain        String             @unique
-  userId           String
-  user             User               @relation(fields: [userId], references: [id])
-  organizationId   String?
-  organization     Organization?      @relation(fields: [organizationId], references: [id])
-  activeDeployId   String?            @unique
-  activeDeploy     Deployment?        @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
-  deployments      Deployment[]       @relation("ProjectDeployments")
-  requestLogs      RequestLog[]       @relation("ProjectRequestLogs")
+  id                   String                @id @default(cuid())
+  name                 String
+  description          String?
+  repoUrl              String
+  subdomain            String                @unique
+  userId               String
+  user                 User                  @relation(fields: [userId], references: [id])
+  organizationId       String?
+  organization         Organization?         @relation(fields: [organizationId], references: [id])
+  activeDeployId       String?               @unique
+  activeDeploy         Deployment?           @relation("ActiveDeployment", fields: [activeDeployId], references: [id])
+  deployments          Deployment[]          @relation("ProjectDeployments")
+  requestLogs          RequestLog[]          @relation("ProjectRequestLogs")
   environmentVariables EnvironmentVariable[] @relation("ProjectEnvironmentVariables")
-  customDomains    CustomDomain[]     @relation("ProjectCustomDomains")
-  githubConnection GitHubConnection?
-  webhookId        String?
-  githubRepositoryId String?
-  preset           String?            @default("React")
-  rootDirectory    String?            @default("./")
-  buildCommand     String?            @default("npm run build")
-  outputDirectory  String?            @default("dist")
-  branch           String?            @default("main")
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  customDomains        CustomDomain[]        @relation("ProjectCustomDomains")
+  githubConnection     GitHubConnection?
+  webhookId            String?
+  githubRepositoryId   String?
+  preset               String?               @default("React")
+  rootDirectory        String?               @default("./")
+  buildCommand         String?               @default("npm run build")
+  outputDirectory      String?               @default("dist")
+  branch               String?               @default("main")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([githubRepositoryId, branch])
 }
@@ -132,19 +132,19 @@ model Notification {
 }
 
 model GitHubConnection {
-  id                   String    @id @default(cuid())
+  id                   String   @id @default(cuid())
   userId               String
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId            String?   @unique
-  project              Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  githubUserId         String    @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId            String?  @unique
+  project              Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  githubUserId         String   @unique
   githubUsername       String
   accessTokenEncrypted String?
   tokenIv              String?
   tokenAuthTag         String?
   scopes               String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 enum Status {
@@ -168,22 +168,27 @@ enum LogStream {
 }
 
 model RequestLog {
-  id           String   @id @default(cuid())
-  projectId    String
-  project      Project  @relation("ProjectRequestLogs", fields: [projectId], references: [id], onDelete: Cascade)
-  
-  timestamp    DateTime @default(now())
-  
-  method       String   
-  path         String   
-  statusCode   Int      
-  responseTime Int      // in milliseconds
-  
-  ipAddress    String?
-  country      String?  
-  countryCode  String?  
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation("ProjectRequestLogs", fields: [projectId], references: [id], onDelete: Cascade)
+
+  timestamp DateTime @default(now())
+
+  method       String
+  path         String
+  statusCode   Int
+  responseTime Int // in milliseconds
+
+  ipAddress   String?
+  country     String?
+  countryCode String?
+  // Older rows and non-page requests are excluded from visitor analytics.
+  // This marker lets analytics evolve without treating legacy request data as
+  // verified human pageviews.
+  isPageView  Boolean @default(false)
 
   @@index([projectId, timestamp])
+  @@index([projectId, isPageView, timestamp])
 }
 
 model EnvironmentVariable {
@@ -208,14 +213,14 @@ model PlatformSettings {
 }
 
 model CustomDomain {
-  id                String   @id @default(cuid())
-  domainName        String   @unique
+  id                String    @id @default(cuid())
+  domainName        String    @unique
   projectId         String
-  project           Project  @relation("ProjectCustomDomains", fields: [projectId], references: [id], onDelete: Cascade)
+  project           Project   @relation("ProjectCustomDomains", fields: [projectId], references: [id], onDelete: Cascade)
   verificationToken String
-  status            String   @default("pending") // pending, verified
+  status            String    @default("pending") // pending, verified
   verifiedAt        DateTime?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([projectId])
 }

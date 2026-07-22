@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -28,4 +29,12 @@ export class ProjectListQueryDto extends PaginationDto {
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{1,64}$/)
   organizationId?: string;
+}
+
+export class MetricsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([7, 30, 90])
+  days: 7 | 30 | 90 = 7;
 }

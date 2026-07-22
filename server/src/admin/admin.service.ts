@@ -53,7 +53,14 @@ export class AdminService {
   }
 
   async overview() {
-    const [users, projects, deployments, settings, activeDeployments] =
+    const [
+      users,
+      projects,
+      deployments,
+      settings,
+      activeDeployments,
+      activeDeploymentItems,
+    ] =
       await Promise.all([
         this.prisma.user.count(),
         this.prisma.project.count(),
@@ -62,8 +69,30 @@ export class AdminService {
         this.prisma.deployment.count({
           where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
         }),
+        this.prisma.deployment.findMany({
+          where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
+          orderBy: { deployedAt: 'desc' },
+          take: 20,
+          include: {
+            project: {
+              select: {
+                id: true,
+                name: true,
+                subdomain: true,
+                user: { select: { email: true } },
+              },
+            },
+          },
+        }),
       ]);
-    return { users, projects, deployments, activeDeployments, settings };
+    return {
+      users,
+      projects,
+      deployments,
+      activeDeployments,
+      activeDeploymentItems,
+      settings,
+    };
   }
 
   async listUsers(search = '', skip = 0, take = 20) {

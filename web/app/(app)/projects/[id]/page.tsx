@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,7 @@ interface WebhookStatus {
 }
 
 interface ProjectMetrics {
+  rangeDays: number
   pageviews: number
   visitors: number
   avgResponse: number
@@ -116,6 +118,9 @@ export default function ProjectPage() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [activeDeploy, setActiveDeploy] = useState<Deployment | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
+  const [metricsRange, setMetricsRange] = useState<7 | 30 | 90>(7);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsUpdatedAt, setMetricsUpdatedAt] = useState<Date | null>(null);
   const [logs, setLogs] = useState<{ stream: string; text: string }[]>([]);
   const [logQuery, setLogQuery] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -176,9 +181,6 @@ export default function ProjectPage() {
         setActiveDeploy((prev: Deployment | null) => prev ? prev : deps.deployments[0]);
       }
 
-      const metricsData = await apiRequest('GET', `/projects/${projectId}/metrics`).catch(() => null);
-      if (metricsData) setMetrics(metricsData);
-      
       const envData = await apiRequest('GET', `/projects/${projectId}/env`).catch(() => []);
       if (Array.isArray(envData) && !hasEnvChanges) {
         setEnvVars(envData.length ? envData : [{ key: "", value: "" }]);
@@ -186,14 +188,32 @@ export default function ProjectPage() {
     } catch (err) { console.error(err); }
   }, [apiRequest, hasEnvChanges, projectId]);
 
+  const loadMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const metricsData = await apiRequest(
+        'GET',
+        `/projects/${projectId}/metrics?days=${metricsRange}`,
+      );
+      setMetrics(metricsData);
+      setMetricsUpdatedAt(new Date());
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not refresh observability data');
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, [apiRequest, metricsRange, projectId]);
+
   useEffect(() => {
     const timer = setTimeout(() => { void loadData(); }, 0);
-    const interval = setInterval(() => { void loadData(); }, 5000);
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
+    return () => clearTimeout(timer);
   }, [loadData]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadMetrics(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadMetrics]);
 
   useEffect(() => {
     if (activeTab === "Logs") {
@@ -419,7 +439,7 @@ export default function ProjectPage() {
                 <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                   <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Availability</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{deploymentHealth}<span className="ml-1 text-sm font-medium text-muted-foreground">%</span></p><p className="mt-1 text-xs text-muted-foreground">Deployment success rate</p></button>
                   <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Response time</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{metrics?.avgResponse || 0}<span className="ml-1 text-sm font-medium text-muted-foreground">ms</span></p><p className="mt-1 text-xs text-muted-foreground">Average visitor response</p></button>
-                  <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Visitors</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{metrics?.visitors?.toLocaleString() || 0}</p><p className="mt-1 text-xs text-muted-foreground">Unique visitors this week</p></button>
+                  <button type="button" onClick={() => setActiveTab('Observability')} className="group px-5 py-4 text-left transition-colors hover:bg-muted/40"><div className="flex items-center justify-between"><span className="section-label">Visitors</span><ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div><p className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{metrics?.visitors?.toLocaleString() || 0}</p><p className="mt-1 text-xs text-muted-foreground">Unique visitors · {metricsRange} days</p></button>
                 </div>
               </section>
 
@@ -441,7 +461,7 @@ export default function ProjectPage() {
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground"><span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-zinc-200" />Interactive 7-day traffic</span><button type="button" onClick={() => setActiveTab('Observability')} className="flex items-center gap-1 font-medium text-foreground hover:text-muted-foreground">Open observability <ChevronRight className="size-3.5" /></button></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground"><span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-zinc-200" />Interactive {metricsRange}-day traffic</span><button type="button" onClick={() => setActiveTab('Observability')} className="flex items-center gap-1 font-medium text-foreground hover:text-muted-foreground">Open observability <ChevronRight className="size-3.5" /></button></div>
                 </section>
 
                 <aside className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-4">
@@ -459,26 +479,52 @@ export default function ProjectPage() {
           )}
           {activeTab === "Observability" && (
             <div className="flex w-full flex-col gap-5 overflow-y-auto pb-8">
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-lg font-semibold tracking-[-0.02em]">Observability</h2>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">A simple view of how your project is performing in production.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Human page traffic with assets, bots, probes, and Kyte previews filtered out.</p>
                 </div>
-                <span className="font-mono text-[11px] text-zinc-500">Last 7 days · Updated just now</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ToggleGroup
+                    aria-label="Observability time range"
+                    disabled={metricsLoading}
+                    onValueChange={(values) => {
+                      const nextRange = Number(values.at(-1));
+                      if (nextRange === 7 || nextRange === 30 || nextRange === 90) {
+                        setMetricsRange(nextRange);
+                      }
+                    }}
+                    size="sm"
+                    spacing={0}
+                    value={[String(metricsRange)]}
+                    variant="outline"
+                  >
+                    <ToggleGroupItem value="7">7 days</ToggleGroupItem>
+                    <ToggleGroupItem value="30">30 days</ToggleGroupItem>
+                    <ToggleGroupItem value="90">90 days</ToggleGroupItem>
+                  </ToggleGroup>
+                  <Button variant="outline" size="sm" disabled={metricsLoading} onClick={() => void loadMetrics()}>
+                    {metricsLoading ? <RefreshCw className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+                    Reload
+                  </Button>
+                  <span className="w-full font-mono text-[11px] text-zinc-500 sm:w-auto">
+                    {metricsUpdatedAt ? `Updated ${metricsUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading metrics…'}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center justify-between"><span className="section-label">Pageviews</span><Activity className="size-3.5 text-zinc-500" /></div>
                   <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.pageviews?.toLocaleString() || 0}</p>
-                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Filtered HTML page loads</p>
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center justify-between"><span className="section-label">Unique visitors</span><Users className="size-3.5 text-zinc-500" /></div>
                   <p className="mt-3 text-2xl font-semibold tracking-[-0.03em]">{metrics?.visitors?.toLocaleString() || 0}</p>
-                  <p className="mt-1 text-xs text-emerald-400">Live <span className="text-muted-foreground">data tracking</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">Unique visitor IPs</p>
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center justify-between"><span className="section-label">Avg. response</span><Gauge className="size-3.5 text-zinc-500" /></div>
@@ -495,7 +541,7 @@ export default function ProjectPage() {
               <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
                 <section className="overflow-hidden rounded-lg border border-border bg-card xl:col-span-8">
                   <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                    <div><h3 className="text-sm font-medium">Traffic</h3><p className="mt-1 text-xs text-muted-foreground">Pageviews and visitors over the past seven days.</p></div>
+                    <div><h3 className="text-sm font-medium">Traffic</h3><p className="mt-1 text-xs text-muted-foreground">Pageviews and visitors over the past {metricsRange} days.</p></div>
                     <div className="flex items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-200" />Pageviews</span><span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-zinc-600" />Visitors</span></div>
                   </div>
                   <div className="h-[280px] px-2 pb-3 pt-5">
@@ -507,7 +553,7 @@ export default function ProjectPage() {
                         </defs>
                         <CartesianGrid vertical={false} stroke="#27272a" strokeDasharray="3 3" />
                         <XAxis axisLine={false} dataKey="day" tick={{ fill: '#71717a', fontSize: 11 }} tickLine={false} />
-                        <YAxis axisLine={false} tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} tickLine={false} />
+                        <YAxis allowDecimals={false} axisLine={false} tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(value) => value >= 1000 ? `${Number((value / 1000).toFixed(1))}k` : String(value)} tickLine={false} />
                         <Tooltip contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 }} cursor={{ stroke: '#52525b' }} labelStyle={{ color: '#a1a1aa' }} />
                         <Area dataKey="pageviews" fill="url(#pageviews)" stroke="#e4e4e7" strokeWidth={2} type="monotone" />
                         <Area dataKey="visitors" fill="url(#visitors)" stroke="#71717a" strokeWidth={2} type="monotone" />
@@ -533,7 +579,7 @@ export default function ProjectPage() {
 
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
                 <section className="overflow-hidden rounded-lg border border-border bg-card">
-                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Response time</h3><p className="mt-1 text-xs text-muted-foreground">Average time for your site to respond to visitors.</p></div>
+                  <div className="border-b border-border px-5 py-4"><h3 className="text-sm font-medium">Response time</h3><p className="mt-1 text-xs text-muted-foreground">Average server response time for tracked HTML pages.</p></div>
                   <div className="flex items-end justify-between gap-6 p-5"><div><p className="text-3xl font-semibold tracking-[-0.04em]">{metrics?.avgResponse || 0}<span className="ml-1 text-base font-medium text-muted-foreground">ms</span></p><p className="mt-1 text-xs text-muted-foreground">Live real-time average</p></div><div className="flex h-12 items-end gap-1" aria-label="Response time trend"><span className="h-5 w-2 rounded-sm bg-zinc-700" /><span className="h-8 w-2 rounded-sm bg-zinc-600" /><span className="h-6 w-2 rounded-sm bg-zinc-700" /><span className="h-10 w-2 rounded-sm bg-zinc-500" /><span className="h-7 w-2 rounded-sm bg-zinc-600" /><span className="h-9 w-2 rounded-sm bg-zinc-500" /><span className="h-11 w-2 rounded-sm bg-zinc-400" /></div></div>
                 </section>
                 <section className="overflow-hidden rounded-lg border border-border bg-card">

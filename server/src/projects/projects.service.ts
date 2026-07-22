@@ -545,29 +545,35 @@ export class ProjectsService {
     });
   }
 
-  async getMetrics(userId: string, projectId: string) {
+  async getMetrics(
+    userId: string,
+    projectId: string,
+    days: 7 | 30 | 90 = 7,
+  ) {
     await this.requireProjectAccess(userId, projectId, 'read');
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const rangeStart = new Date();
+    rangeStart.setUTCHours(0, 0, 0, 0);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
+    const trafficWhere: Prisma.RequestLogWhereInput = {
+      projectId,
+      timestamp: { gte: rangeStart },
+      isPageView: true,
+    };
 
     const [totalRequests, uniqueVisitorsCount, avgResponseAgg] =
       await Promise.all([
         this.prisma.requestLog.count({
-          where: { projectId, timestamp: { gte: sevenDaysAgo } },
+          where: trafficWhere,
         }),
 
         this.prisma.requestLog.groupBy({
           by: ['ipAddress'],
-          where: {
-            projectId,
-            timestamp: { gte: sevenDaysAgo },
-            ipAddress: { not: null },
-          },
+          where: { ...trafficWhere, ipAddress: { not: null } },
         }),
 
         this.prisma.requestLog.aggregate({
-          where: { projectId, timestamp: { gte: sevenDaysAgo } },
+          where: trafficWhere,
           _avg: { responseTime: true },
         }),
       ]);
@@ -576,7 +582,7 @@ export class ProjectsService {
     const avgResponse = Math.round(avgResponseAgg._avg.responseTime || 0);
 
     const allLogs = await this.prisma.requestLog.findMany({
-      where: { projectId, timestamp: { gte: sevenDaysAgo } },
+      where: trafficWhere,
       select: {
         timestamp: true,
         ipAddress: true,
@@ -585,16 +591,25 @@ export class ProjectsService {
       },
     });
 
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const trafficMap = new Map<
       string,
-      { pageviews: number; ips: Set<string> }
+      { label: string; pageviews: number; ips: Set<string> }
     >();
+    const dateLabel = new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
 
-    for (let i = 6; i >= 0; i--) {
+    for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
-      d.setDate(d.getDate() - i);
-      trafficMap.set(days[d.getDay()], { pageviews: 0, ips: new Set() });
+      d.setUTCHours(0, 0, 0, 0);
+      d.setUTCDate(d.getUTCDate() - i);
+      trafficMap.set(d.toISOString().slice(0, 10), {
+        label: dateLabel.format(d),
+        pageviews: 0,
+        ips: new Set(),
+      });
     }
 
     const locationsMap = new Map<
@@ -603,9 +618,9 @@ export class ProjectsService {
     >();
 
     for (const log of allLogs) {
-      const dayStr = days[log.timestamp.getDay()];
-      if (trafficMap.has(dayStr)) {
-        const t = trafficMap.get(dayStr)!;
+      const dayKey = log.timestamp.toISOString().slice(0, 10);
+      if (trafficMap.has(dayKey)) {
+        const t = trafficMap.get(dayKey)!;
         t.pageviews++;
         if (log.ipAddress) t.ips.add(log.ipAddress);
       }
@@ -618,32 +633,33 @@ export class ProjectsService {
       if (log.ipAddress) locationsMap.get(c)!.visitors.add(log.ipAddress);
     }
 
-    const trafficData = Array.from(trafficMap.entries()).map(([day, data]) => ({
-      day,
+    const trafficData = Array.from(trafficMap.values()).map((data) => ({
+      day: data.label,
       pageviews: data.pageviews,
       visitors: data.ips.size,
     }));
 
-    const locationsList = Array.from(locationsMap.entries())
-      .map(([country, data]) => ({
+    const allLocations = Array.from(locationsMap.entries()).map(
+      ([country, data]) => ({
         country,
         code: data.code,
         visitors: data.visitors.size,
-        share: 0,
+      }),
+    );
+    const totalLocVisitors = allLocations.reduce(
+      (total, location) => total + location.visitors,
+      0,
+    );
+    const locationsList = allLocations
+      .map((location) => ({
+        ...location,
+        share:
+          totalLocVisitors > 0
+            ? Math.round((location.visitors / totalLocVisitors) * 100)
+            : 0,
       }))
       .sort((a, b) => b.visitors - a.visitors)
       .slice(0, 5);
-
-    const totalLocVisitors = locationsList.reduce(
-      (acc, l) => acc + l.visitors,
-      0,
-    );
-    locationsList.forEach((l) => {
-      l.share =
-        totalLocVisitors > 0
-          ? Math.round((l.visitors / totalLocVisitors) * 100)
-          : 0;
-    });
 
     const deployments = await this.prisma.deployment.findMany({
       where: { projectId },
@@ -676,6 +692,7 @@ export class ProjectsService {
         : 100;
 
     return {
+      rangeDays: days,
       pageviews: totalRequests,
       visitors,
       avgResponse,

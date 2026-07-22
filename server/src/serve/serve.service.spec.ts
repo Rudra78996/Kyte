@@ -1,4 +1,57 @@
-import { ServeService } from './serve.service';
+import { isTrackablePageView, ServeService } from './serve.service';
+
+describe('visitor analytics filtering', () => {
+  const browserRequest = {
+    method: 'GET',
+    query: {},
+    headers: {
+      accept: 'text/html',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'user-agent':
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+    },
+  };
+
+  it('tracks a successful browser document navigation', () => {
+    expect(isTrackablePageView(browserRequest as never, 200, 'text/html')).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    [{ ...browserRequest, query: { __kyte_preview: '1' } }, 'Kyte preview'],
+    [
+      {
+        ...browserRequest,
+        headers: { ...browserRequest.headers, 'user-agent': 'curl/8.5.0' },
+      },
+      'automated client',
+    ],
+    [
+      {
+        ...browserRequest,
+        headers: { ...browserRequest.headers, 'sec-fetch-dest': 'script' },
+      },
+      'non-document request',
+    ],
+  ])('does not track %s', (request) => {
+    expect(isTrackablePageView(request as never, 200, 'text/html')).toBe(false);
+  });
+
+  it('does not track errors or non-HTML responses', () => {
+    expect(isTrackablePageView(browserRequest as never, 404, 'text/html')).toBe(
+      false,
+    );
+    expect(
+      isTrackablePageView(
+        browserRequest as never,
+        200,
+        'application/javascript',
+      ),
+    ).toBe(false);
+  });
+});
 
 describe('deployed-site hostname isolation', () => {
   const originalSitesDomain = process.env.SITES_DOMAIN;
@@ -120,6 +173,7 @@ describe('deployed-site hostname isolation', () => {
     );
 
     expect(res.removeHeader).toHaveBeenCalledWith('Set-Cookie');
+    expect(res.removeHeader).toHaveBeenCalledWith('X-Frame-Options');
     expect(res.setHeader).not.toHaveBeenCalledWith(
       'Content-Security-Policy',
       expect.anything(),

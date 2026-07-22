@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FaGithub, FaLock } from "react-icons/fa";
 import { SiNextdotjs, SiReact, SiVuedotjs } from "react-icons/si";
-import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2, KeyRound } from "lucide-react";
+import { Box, GitBranch, Search, Settings2, ArrowRight, Globe, ExternalLink, Activity, BadgeCheck, LogOut, FileText, Terminal, CircleAlert, CheckCircle2, KeyRound, RefreshCw } from "lucide-react";
 import { useApiRequest, useApiToken } from "@/hooks/use-api";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { UserAvatar } from "@/components/user-avatar";
@@ -17,9 +17,11 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EnvironmentVariableEditor } from "@/components/environment-variable-editor";
 import { streamDeploymentLogs } from "@/lib/deployment-log-stream";
 import { siteUrl } from "@/lib/site-url";
+import { cn } from "@/lib/utils";
 
 interface GithubRepo {
   id: number;
@@ -56,6 +58,8 @@ interface ProjectLimit {
   remaining: number;
   canCreate: boolean;
 }
+
+type PreviewState = 'checking' | 'loading' | 'ready' | 'error';
 
 function serializeEnvironmentVariables(
   variables: Array<{ key: string; value: string }>,
@@ -110,11 +114,64 @@ export default function NewProjectPage() {
   const [activeDeploy, setActiveDeploy] = useState<Deployment | null>(null);
   const [deployStatus, setDeployStatus] = useState<'QUEUED' | 'BUILDING' | 'SUCCESS' | 'FAILED'>('QUEUED');
   const [logs, setLogs] = useState<{ stream: string; text: string }[]>([]);
+  const [previewState, setPreviewState] = useState<PreviewState>('checking');
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
+
+  useEffect(() => {
+    if (step !== 4 || !project?.subdomain) return;
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + 20_000;
+    const previewProbeUrl = siteUrl(
+      project.subdomain,
+      `?__kyte_preview=1&probe=${previewAttempt}`,
+    );
+
+    const probe = async () => {
+      const controller = new AbortController();
+      const requestTimeout = setTimeout(() => controller.abort(), 5_000);
+      try {
+        await fetch(previewProbeUrl, {
+          cache: 'no-store',
+          mode: 'no-cors',
+          signal: controller.signal,
+        });
+        if (!cancelled) setPreviewState('loading');
+      } catch {
+        if (cancelled) return;
+        if (Date.now() < deadline) {
+          retryTimer = setTimeout(() => void probe(), 1_500);
+        } else {
+          setPreviewState('error');
+        }
+      } finally {
+        clearTimeout(requestTimeout);
+      }
+    };
+
+    void probe();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [previewAttempt, project?.subdomain, step]);
+
+  useEffect(() => {
+    if (previewState !== 'loading') return;
+    const timer = setTimeout(() => setPreviewState('error'), 15_000);
+    return () => clearTimeout(timer);
+  }, [previewState]);
+
+  const retryPreview = () => {
+    setPreviewState('checking');
+    setPreviewAttempt((attempt) => attempt + 1);
+  };
 
   async function checkGithubConnection() {
     try {
@@ -279,6 +336,8 @@ export default function NewProjectPage() {
         commitSha: 'HEAD',
       });
       setActiveDeploy(deployRes);
+      setPreviewState('checking');
+      setPreviewAttempt(0);
       
       setStep(3);
       setLoading(false);
@@ -734,19 +793,54 @@ export default function NewProjectPage() {
 
             {/* Preview Container - inside Card */}
             <div className="mx-6 mb-2 mt-5 overflow-hidden rounded-lg border border-zinc-800 bg-black shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-              <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2">
-                <span className="size-1.5 rounded-full bg-emerald-400" />
-                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">Live preview</span>
+              <div className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={cn('size-1.5 rounded-full', previewState === 'ready' && 'bg-emerald-400', previewState === 'error' && 'bg-red-400', (previewState === 'checking' || previewState === 'loading') && 'animate-pulse bg-zinc-400')} />
+                  <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">Live preview</span>
+                </div>
+                <span className="font-mono text-[10px] text-zinc-600">
+                  {previewState === 'ready' ? 'Ready' : previewState === 'error' ? 'Unavailable' : 'Warming up'}
+                </span>
               </div>
-              <div className="pointer-events-none relative aspect-[16/10] w-full overflow-hidden">
-                <iframe 
-                  src={siteUrl(project?.subdomain || "")}
-                  className="pointer-events-none absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-50 border-none"
-                  scrolling="no"
-                  tabIndex={-1}
-                  style={{ overflow: 'hidden' }}
-                  title="Project Preview"
-                />
+              <div className="relative aspect-[16/10] w-full overflow-hidden bg-zinc-950">
+                {(previewState === 'loading' || previewState === 'ready') && project?.subdomain && (
+                  <iframe
+                    key={previewAttempt}
+                    src={siteUrl(project.subdomain, `?__kyte_preview=1&attempt=${previewAttempt}`)}
+                    className={cn('pointer-events-none absolute left-0 top-0 h-[200%] w-[200%] origin-top-left scale-50 border-none transition-opacity duration-300', previewState === 'ready' ? 'opacity-100' : 'opacity-0')}
+                    scrolling="no"
+                    tabIndex={-1}
+                    style={{ overflow: 'hidden' }}
+                    title="Project Preview"
+                    onLoad={() => setPreviewState('ready')}
+                    onError={() => setPreviewState('error')}
+                  />
+                )}
+
+                {(previewState === 'checking' || previewState === 'loading') && (
+                  <div className="absolute inset-0 flex flex-col gap-4 p-5" role="status" aria-live="polite">
+                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                      <RefreshCw className="animate-spin" />
+                      {previewState === 'checking' ? 'Waiting for the deployment URL…' : 'Loading the website preview…'}
+                    </div>
+                    <Skeleton className="h-7 w-2/5" />
+                    <Skeleton className="h-3 w-4/5" />
+                    <Skeleton className="h-3 w-3/5" />
+                    <Skeleton className="mt-auto h-16 w-full" />
+                  </div>
+                )}
+
+                {previewState === 'error' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                    <CircleAlert className="size-5 text-zinc-400" />
+                    <p className="mt-3 text-sm font-medium text-zinc-200">Preview is taking longer than expected</p>
+                    <p className="mt-1 max-w-sm text-xs leading-5 text-zinc-500">The deployment succeeded, but its public URL is not ready in this browser yet.</p>
+                    <Button variant="outline" size="sm" className="mt-4" onClick={retryPreview}>
+                      <RefreshCw data-icon="inline-start" />
+                      Retry preview
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
