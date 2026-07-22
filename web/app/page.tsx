@@ -28,6 +28,7 @@ import {
 import Link from "next/link";
 import Navbar from "@/components/navbar";
 import MarketingFooter from "@/components/marketing-footer";
+import { TextAnimate } from "@/components/ui/text-animate";
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState(1);
@@ -72,9 +73,17 @@ export default function LandingPage() {
           </div>
           
           {/* Title */}
-          <h1 className="font-sans font-medium text-white text-balance text-[2.625rem] leading-[1.05] tracking-[-0.022em] sm:text-[3.1rem] md:text-[3.75rem] md:leading-[1.02] md:tracking-[-0.025em] text-center mx-auto max-w-[30ch]">
-            <span className="block">Your frontend, live</span>
-            <em className="block italic text-[#8b9dce]">at the speed of a git push.</em>
+          <h1 className="mx-auto max-w-[30ch] text-balance text-center font-sans text-[2.625rem] font-medium leading-[1.05] tracking-[-0.022em] text-white sm:text-[3.1rem] md:text-[3.75rem] md:leading-[1.02] md:tracking-[-0.025em]">
+            <span className="block w-full">
+              <TextAnimate as="span" by="word" animation="blurInUp" duration={0.32} delay={0.06} once className="block">
+                Your frontend, live
+              </TextAnimate>
+            </span>
+            <span className="mt-1 block w-full">
+              <TextAnimate as="span" by="word" animation="blurInUp" duration={0.36} delay={0.16} once className="block italic text-[#8b9dce]">
+                at the speed of a git push.
+              </TextAnimate>
+            </span>
           </h1>
           
           {/* Subtitle */}

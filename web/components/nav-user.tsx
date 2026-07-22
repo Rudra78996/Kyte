@@ -78,7 +78,7 @@ export function NavUser() {
                     <BadgeCheck className="mr-2 size-4" />
                     Manage Account
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer">
+                  <DropdownMenuItem onClick={() => router.push('/docs')} className="cursor-pointer">
                     <FileText className="mr-2 size-4" />
                     Docs
                   </DropdownMenuItem>

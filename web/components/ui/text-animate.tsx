@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion, MotionProps, Variants } from "motion/react";
+import { AnimatePresence, motion, MotionProps, Variants, useReducedMotion } from "motion/react";
 import React, { ElementType, memo } from "react";
 
 type AnimationType = "text" | "word" | "character" | "line";
@@ -323,6 +323,12 @@ const TextAnimateBase = ({
   animation = "fadeIn",
   ...props
 }: TextAnimateProps) => {
+  const reduceMotion = useReducedMotion();
+
+  if (reduceMotion) {
+    return React.createElement(Component, { className: cn("whitespace-pre-wrap", className), ...props }, children);
+  }
+
   let segments: string[] = [];
   switch (by) {
     case "word":
@@ -420,7 +426,6 @@ const TextAnimateBase = ({
 
 // Export the memoized version
 export const TextAnimate = memo(TextAnimateBase);
-
 
 
 

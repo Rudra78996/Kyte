@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowUpRight, BookOpen, Box, Cable, ChartNoAxesCombined, ChevronRight, GitBranch, Layers3, Rocket } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, Box, Cable, ChartNoAxesCombined, ChevronRight, GitBranch, Layers3 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DocsSearch } from "@/components/docs-search";
 
@@ -29,7 +29,11 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <Link href="/docs" className="flex items-center gap-2.5"><Image src="/kite-flying.png" alt="Kyte Logo" width={22} height={22} className="object-contain invert dark:invert" /><span className="text-sm font-semibold tracking-[-0.02em] text-zinc-100">Kyte Docs</span></Link>
           <span className="hidden h-4 w-px bg-border sm:block" />
           <span className="hidden text-xs text-muted-foreground sm:block">Platform documentation</span>
-          <div className="ml-auto flex items-center gap-3"><DocsSearch /><Link href="/dashboard" className="hidden items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground md:flex">Open app <ChevronRight className="size-3" /></Link></div>
+          <div className="ml-auto flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"><ArrowLeft className="size-3" />Home</Link>
+            <DocsSearch />
+            <Link href="/dashboard" className="hidden items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground md:flex">Open app <ChevronRight className="size-3" /></Link>
+          </div>
         </div>
       </header>
 
