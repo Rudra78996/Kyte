@@ -3,13 +3,14 @@
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useApiRequest } from '@/hooks/use-api';
 import { useSearchParams } from 'next/navigation';
+import { useClerk } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { GitBranch, Layers3, Mail, UserRound } from 'lucide-react';
+import { GitBranch, Layers3, LogOut, Mail, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UserProfile {
@@ -29,6 +30,7 @@ interface ProjectLimit {
 function SettingsContent() {
   const apiRequest = useApiRequest();
   const searchParams = useSearchParams();
+  const { signOut } = useClerk();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [projectLimit, setProjectLimit] = useState<ProjectLimit | null>(null);
   const [loading, setLoading] = useState(true);
@@ -165,7 +167,7 @@ function SettingsContent() {
               <Mail className="size-4 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium">Email</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Used for your account and notifications.</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Used to identify your Kyte account.</p>
               </div>
             </div>
             <span className="break-all text-sm sm:text-right">{user?.email}</span>
@@ -231,6 +233,19 @@ function SettingsContent() {
             </CardFooter>
           </>
         )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Session</CardTitle>
+          <CardDescription>Sign out of Kyte on this browser.</CardDescription>
+        </CardHeader>
+        <CardFooter className="justify-end">
+          <Button variant="destructive" onClick={() => void signOut()}>
+            <LogOut data-icon="inline-start" />
+            Log out
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );

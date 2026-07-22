@@ -19,7 +19,6 @@ describe('WebhooksService', () => {
   };
   const prisma = {
     project: { findMany: jest.fn() },
-    notification: { create: jest.fn() },
   };
   const deployments = {
     createFromWebhook: jest.fn(),
@@ -106,57 +105,16 @@ describe('WebhooksService', () => {
     expect(deployments.createFromWebhook).not.toHaveBeenCalled();
   });
 
-  it('acknowledges quota-limited pushes and notifies the owner once', async () => {
+  it('acknowledges quota-limited pushes without creating a deployment', async () => {
     deployments.createFromWebhook.mockRejectedValue(
       new WebhookDeploymentQuotaExceededError(),
     );
-    redis.set.mockResolvedValueOnce('OK').mockResolvedValueOnce('OK');
+    redis.set.mockResolvedValueOnce('OK');
 
     await expect(
       service.handlePushEvent('44444444-4444-4444-8444-444444444444', payload),
     ).resolves.toBeUndefined();
 
-    expect(redis.set).toHaveBeenLastCalledWith(
-      `github:webhook-quota-notice:${project.userId}`,
-      '1',
-      'EX',
-      86_400,
-      'NX',
-    );
-    expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: project.userId,
-        title: 'Webhook build limit reached',
-        type: 'WARNING',
-      }),
-    });
-  });
-
-  it('does not repeat the quota notification within 24 hours', async () => {
-    deployments.createFromWebhook.mockRejectedValue(
-      new WebhookDeploymentQuotaExceededError(),
-    );
-    redis.set.mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
-
-    await service.handlePushEvent(
-      '55555555-5555-4555-8555-555555555555',
-      payload,
-    );
-
-    expect(prisma.notification.create).not.toHaveBeenCalled();
-  });
-
-  it('still acknowledges the delivery if quota notification creation fails', async () => {
-    deployments.createFromWebhook.mockRejectedValue(
-      new WebhookDeploymentQuotaExceededError(),
-    );
-    redis.set.mockResolvedValueOnce('OK').mockResolvedValueOnce('OK');
-    prisma.notification.create.mockRejectedValueOnce(
-      new Error('database unavailable'),
-    );
-
-    await expect(
-      service.handlePushEvent('66666666-6666-4666-8666-666666666666', payload),
-    ).resolves.toBeUndefined();
+    expect(deployments.createFromWebhook).toHaveBeenCalledTimes(1);
   });
 });

@@ -60,9 +60,6 @@ const mockPrisma = {
   project: {
     update: jest.fn(),
   },
-  notification: {
-    create: jest.fn(),
-  },
 };
 
 jest.mock('@prisma/client', () => {
@@ -195,8 +192,6 @@ describe('Worker - Environment Variables Injection', () => {
   });
 
   it('limits global worker concurrency to two builds', () => {
-    expect(workerOptions).toEqual(
-      expect.objectContaining({ concurrency: 2 }),
-    );
+    expect(workerOptions).toEqual(expect.objectContaining({ concurrency: 2 }));
   });
 });

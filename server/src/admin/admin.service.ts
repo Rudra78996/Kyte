@@ -8,10 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  UpdateAdminUserDto,
-  UpdatePlatformSettingsDto,
-} from './dto/admin.dto';
+import { UpdateAdminUserDto, UpdatePlatformSettingsDto } from './dto/admin.dto';
 
 const PLATFORM_SETTINGS_ID = 'platform';
 
@@ -60,31 +57,30 @@ export class AdminService {
       settings,
       activeDeployments,
       activeDeploymentItems,
-    ] =
-      await Promise.all([
-        this.prisma.user.count(),
-        this.prisma.project.count(),
-        this.prisma.deployment.count(),
-        this.getSettings(),
-        this.prisma.deployment.count({
-          where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
-        }),
-        this.prisma.deployment.findMany({
-          where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
-          orderBy: { deployedAt: 'desc' },
-          take: 20,
-          include: {
-            project: {
-              select: {
-                id: true,
-                name: true,
-                subdomain: true,
-                user: { select: { email: true } },
-              },
+    ] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.project.count(),
+      this.prisma.deployment.count(),
+      this.getSettings(),
+      this.prisma.deployment.count({
+        where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
+      }),
+      this.prisma.deployment.findMany({
+        where: { status: { in: ['QUEUED', 'BUILDING', 'UPLOADING'] } },
+        orderBy: { deployedAt: 'desc' },
+        take: 20,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+              subdomain: true,
+              user: { select: { email: true } },
             },
           },
-        }),
-      ]);
+        },
+      }),
+    ]);
     return {
       users,
       projects,
@@ -96,15 +92,6 @@ export class AdminService {
   }
 
   async listUsers(search = '', skip = 0, take = 20) {
-    const where: Prisma.UserWhereInput = search
-      ? {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' } },
-            { username: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
-
     const users = await this.prisma.$queryRaw<AdminUserRow[]>`
       SELECT
         u."id",
@@ -210,7 +197,6 @@ export class AdminService {
       for (const project of user.projects) {
         await this.deleteProjectInTransaction(tx, project.id);
       }
-      await tx.notification.deleteMany({ where: { userId: id } });
       await tx.organizationMember.deleteMany({ where: { userId: id } });
       await tx.gitHubConnection.deleteMany({ where: { userId: id } });
       await tx.user.delete({ where: { id } });
