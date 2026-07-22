@@ -3,7 +3,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { ChevronDown } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 
 export default function Navbar() {
@@ -31,17 +30,12 @@ export default function Navbar() {
         </Link>
 
         {/* Center: Links */}
-        <nav className="hidden md:flex items-center gap-8 text-[13px] font-medium text-neutral-300">
-          <Link href="#product" className="flex items-center gap-1 hover:text-white transition-colors">
-            Product <ChevronDown size={14} className="opacity-50" />
-          </Link>
-          <Link href="#frameworks" className="hover:text-white transition-colors">Frameworks</Link>
-          <Link href="#deployments" className="hover:text-white transition-colors">Deployments</Link>
-          <Link href="#features" className="hover:text-white transition-colors">Features</Link>
-          <Link href="#pricing" className="hover:text-white transition-colors">Pricing</Link>
-          <Link href="#resources" className="flex items-center gap-1 hover:text-white transition-colors">
-            Resources <ChevronDown size={14} className="opacity-50" />
-          </Link>
+        <nav className="hidden items-center gap-7 text-[13px] font-medium text-neutral-300 md:flex" aria-label="Primary navigation">
+          <Link href="/#how-it-works" className="transition-colors hover:text-white">How it works</Link>
+          <Link href="/#features" className="transition-colors hover:text-white">Features</Link>
+          <Link href="/#pricing" className="transition-colors hover:text-white">Pricing</Link>
+          <Link href="/docs" className="transition-colors hover:text-white">Docs</Link>
+          <Link href="/contact" className="transition-colors hover:text-white">Contact</Link>
         </nav>
 
         {/* Right: Auth */}
@@ -51,18 +45,10 @@ export default function Navbar() {
               <Link href="/sign-in" className="text-[13px] font-medium text-neutral-300 hover:text-white transition-colors hidden sm:block">
                 Login
               </Link>
-              <Link href="/sign-up">
-                <Button className="h-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] px-6 font-medium border-0 shadow-none">
-                  Signup
-                </Button>
-              </Link>
+              <Button nativeButton={false} render={<Link href="/sign-up" />} className="h-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] px-6 font-medium border-0 shadow-none">Sign up</Button>
             </>
           ) : (
-            <Link href="/dashboard">
-              <Button className="h-8 rounded-full bg-white hover:bg-neutral-200 text-black text-[13px] px-6 font-medium border-0 shadow-none">
-                Dashboard
-              </Button>
-            </Link>
+            <Button nativeButton={false} render={<Link href="/dashboard" />} className="h-8 rounded-full bg-white hover:bg-neutral-200 text-black text-[13px] px-6 font-medium border-0 shadow-none">Dashboard</Button>
           )}
         </div>
       </div>

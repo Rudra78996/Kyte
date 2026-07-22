@@ -2,12 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { TextAnimate } from "@/components/ui/text-animate";
-import { NumberTicker } from "@/components/ui/number-ticker";
-import { WordRotate } from "@/components/ui/word-rotate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Safari } from "@/components/ui/safari";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Accordion,
   AccordionContent,
@@ -24,11 +21,13 @@ import {
   GitBranch,
   Rocket,
   Code2,
-  Upload,
-  ChevronDown
+  ChevronDown,
+  Check,
+  Mail,
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/navbar";
+import MarketingFooter from "@/components/marketing-footer";
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState(1);
@@ -62,24 +61,25 @@ export default function LandingPage() {
           {/* Badge */}
           <div className="flex justify-center mb-7 md:mb-10">
             <Link
-              href="/login"
+              href="#how-it-works"
               className="group inline-flex items-center gap-2 rounded-full pl-2 pr-4 py-1.5 flex-col md:flex-row text-center bg-neutral-900/40 border border-neutral-800/80 text-[12px] md:text-[13px] font-medium text-neutral-200 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:border-neutral-700/70 transition-colors backdrop-blur-xl"
             >
               <span className="inline-flex items-center gap-1 rounded-full bg-[#1c2333] ring-1 ring-[#2a3449] px-2 py-0.5 text-[10.5px] uppercase tracking-[0.14em] text-[#8b9dce]">
                 <Sparkles size={12} className="mr-1" /> NEW
               </span>
-              Create serverless edge deployments with Kyte
+              Automatic GitHub deployments
             </Link>
           </div>
           
           {/* Title */}
-          <h1 className="font-sans font-medium text-white text-balance text-[2.5rem] leading-[1.04] tracking-[-0.022em] sm:text-[3rem] md:text-[3.5rem] lg:text-[3.75rem] md:leading-[1.02] md:tracking-[-0.025em] text-center mx-auto max-w-[32ch]">
-            Deploy Next.js, React and Vue, <em className="italic text-[#8b9dce]">instantly</em>.
+          <h1 className="font-sans font-medium text-white text-balance text-[2.625rem] leading-[1.05] tracking-[-0.022em] sm:text-[3.1rem] md:text-[3.75rem] md:leading-[1.02] md:tracking-[-0.025em] text-center mx-auto max-w-[30ch]">
+            <span className="block">Your frontend, live</span>
+            <em className="block italic text-[#8b9dce]">at the speed of a git push.</em>
           </h1>
           
           {/* Subtitle */}
           <p className="font-sans font-normal text-[16px] md:text-[17px] leading-[1.6] text-neutral-400 text-balance mt-5 md:mt-6 max-w-[560px] mx-auto text-center">
-            High-performance automated deployment platform for modern frontend teams — push your code and get a live URL instantly without configuring complex CI/CD pipelines.
+            Push your code and get a live URL. Kyte handles the build, HTTPS, and deployment history.
           </p>
 
           {/* CTA */}
@@ -88,7 +88,7 @@ export default function LandingPage() {
                 Start deploying for free <ArrowRight className="size-4" />
             </Button>
             <p className="font-sans font-normal text-[13px] text-neutral-500 text-center">
-              Unlimited Previews · No Credit Card · 2-Minute Setup
+              Free to start · No credit card · Deployment safeguards included
             </p>
           </div>
 
@@ -112,13 +112,13 @@ export default function LandingPage() {
                   <button onClick={() => handleTabClick(3)} type="button" className={`relative px-3 md:px-4 py-2 text-[13px] md:text-[14px] font-medium transition-colors whitespace-nowrap cursor-pointer ${activeTab === 3 ? 'text-white' : 'text-neutral-500 hover:text-neutral-200'}`}>
                     <span className={`hidden sm:inline font-mono text-[11px] tracking-[0.08em] mr-1.5 transition-colors ${activeTab === 3 ? 'text-[#8b9dce]' : 'text-neutral-600'}`}>03</span>
                     <span className="sm:hidden">Deploy</span>
-                    <span className="hidden sm:inline">Deploy on Edge</span>
+                    <span className="hidden sm:inline">Publish Website</span>
                     {activeTab === 3 && <span className="absolute left-2 right-2 md:left-3 md:right-3 bottom-0 h-[2px] bg-[#8b9dce] origin-left z-10"></span>}
                   </button>
                   <button onClick={() => handleTabClick(4)} type="button" className={`relative px-3 md:px-4 py-2 text-[13px] md:text-[14px] font-medium transition-colors whitespace-nowrap cursor-pointer ${activeTab === 4 ? 'text-white' : 'text-neutral-500 hover:text-neutral-200'}`}>
                     <span className={`hidden sm:inline font-mono text-[11px] tracking-[0.08em] mr-1.5 transition-colors ${activeTab === 4 ? 'text-[#8b9dce]' : 'text-neutral-600'}`}>04</span>
                     <span className="sm:hidden">Share</span>
-                    <span className="hidden sm:inline">Share Preview</span>
+                    <span className="hidden sm:inline">Review Deployment</span>
                     {activeTab === 4 && <span className="absolute left-2 right-2 md:left-3 md:right-3 bottom-0 h-[2px] bg-[#8b9dce] origin-left z-10"></span>}
                   </button>
                 </div>
@@ -163,7 +163,7 @@ export default function LandingPage() {
                       <Terminal className="size-4" /> Deployments
                     </div>
                     <div className={`text-xs px-3 py-2 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 3 ? 'bg-neutral-800 text-white' : 'text-neutral-400'}`}>
-                      <Zap className="size-4" /> Edge Metrics
+                      <Zap className="size-4" /> Observability
                     </div>
                     <div className={`text-xs px-3 py-2 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 4 ? 'bg-neutral-800 text-white' : 'text-neutral-400'}`}>
                       <Globe className="size-4" /> Domains & URLs
@@ -172,7 +172,7 @@ export default function LandingPage() {
                     <div className="mt-auto border-t border-neutral-800/60 pt-4">
                       <div className="text-xs px-2 py-1.5 text-neutral-400 flex items-center gap-2.5 hover:bg-neutral-800/50 rounded-lg cursor-pointer transition-colors group">
                         <div className="w-6 h-6 rounded-full bg-neutral-200 border border-neutral-700 group-hover:border-[#8b9dce] transition-colors overflow-hidden flex items-center justify-center shrink-0">
-                          <img src="https://api.dicebear.com/9.x/notionists/svg?seed=Sophia&backgroundColor=transparent" alt="Avatar" className="w-full h-full object-cover p-[1px]" />
+                          <span className="text-[10px] font-semibold text-neutral-900">A</span>
                         </div>
                         <span className="font-medium text-neutral-300">Alex&apos;s Team</span>
                         <ChevronDown className="size-3.5 text-neutral-600 ml-auto" />
@@ -258,7 +258,7 @@ export default function LandingPage() {
                               <div className="pl-4">✓ Collecting page data</div>
                               <div className="pl-4">✓ Generating static pages (142/142)</div>
                               <div className="text-neutral-400 mt-3">✓ Build completed successfully in 12.4s</div>
-                              <div className="mt-2 text-neutral-300 animate-pulse">Assigning to global edge regions...</div>
+                              <div className="mt-2 text-neutral-300 animate-pulse">Publishing immutable static assets...</div>
                             </div>
                           </div>
                           <div className="hidden lg:flex w-64 flex-col gap-4">
@@ -268,7 +268,7 @@ export default function LandingPage() {
                                 <div className="flex justify-between"><span className="text-neutral-500">Branch</span><span className="text-neutral-300 font-mono">main</span></div>
                                 <div className="flex justify-between"><span className="text-neutral-500">Commit</span><span className="text-neutral-300 font-mono">a7f93b2</span></div>
                                 <div className="flex justify-between"><span className="text-neutral-500">Framework</span><span className="text-neutral-300">Next.js</span></div>
-                                <div className="flex justify-between"><span className="text-neutral-500">Region</span><span className="text-neutral-300">Global Edge</span></div>
+                                <div className="flex justify-between"><span className="text-neutral-500">Hosting</span><span className="text-neutral-300">Static</span></div>
                               </div>
                             </div>
                           </div>
@@ -280,7 +280,7 @@ export default function LandingPage() {
                            <div className="mb-6 flex justify-between items-end border-b border-neutral-800 pb-4">
                             <div>
                               <h2 className="text-xl font-medium text-white mb-1">Project Overview</h2>
-                              <p className="text-[13px] text-neutral-400">my-app.kyte.dev is currently active and receiving traffic.</p>
+                        <p className="text-[13px] text-neutral-400">my-app.site.kyte.example is active and receiving traffic.</p>
                             </div>
                             <Button className="h-8 text-[12px] bg-white text-black hover:bg-neutral-200 rounded-md px-4">Visit URL <ArrowRight className="size-3 ml-1.5" /></Button>
                           </div>
@@ -294,15 +294,15 @@ export default function LandingPage() {
                               </div>
                             </div>
                             <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/20 flex flex-col">
-                              <p className="text-[11px] text-neutral-500 uppercase font-medium mb-1">Edge Cache Hit</p>
+                              <p className="text-[11px] text-neutral-500 uppercase font-medium mb-1">Pageviews</p>
                               <div className="mt-auto flex items-baseline gap-1.5">
-                                <h4 className="text-2xl font-medium text-white">99.9%</h4>
+                                <h4 className="text-2xl font-medium text-white">1,284</h4>
                               </div>
                             </div>
                             <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/20 flex flex-col">
-                              <p className="text-[11px] text-neutral-500 uppercase font-medium mb-1">Total Bandwidth</p>
+                              <p className="text-[11px] text-neutral-500 uppercase font-medium mb-1">Visitors</p>
                               <div className="mt-auto flex items-baseline gap-1.5">
-                                <h4 className="text-2xl font-medium text-white">42.8 <span className="text-sm font-normal text-neutral-500">GB</span></h4>
+                                <h4 className="text-2xl font-medium text-white">412</h4>
                               </div>
                             </div>
                             <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/20 flex flex-col">
@@ -330,7 +330,7 @@ export default function LandingPage() {
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <span className="text-[11px] text-neutral-500 hidden sm:block">14.2s</span>
-                                    <Badge variant="outline" className={`text-[10px] h-5 ${i === 1 ? 'border-neutral-500 text-neutral-300' : 'border-neutral-800 text-neutral-500'}`}>{i === 1 ? 'Current' : 'Reverted'}</Badge>
+                                    <Badge variant="outline" className={`text-[10px] h-5 ${i === 1 ? 'border-neutral-500 text-neutral-300' : 'border-neutral-800 text-neutral-500'}`}>{i === 1 ? 'Current' : 'Previous'}</Badge>
                                   </div>
                                 </div>
                               ))}
@@ -345,14 +345,14 @@ export default function LandingPage() {
                             <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_40px_rgba(255,255,255,0.1)]">
                               <Globe className="w-8 h-8 text-black" />
                             </div>
-                            <h3 className="text-2xl font-medium text-white mb-2">Ready to Share</h3>
-                            <p className="text-sm text-neutral-400 max-w-sm mx-auto">Your preview environment is active. Share this link with your team for feedback.</p>
+                            <h3 className="text-2xl font-medium text-white mb-2">Deployment Ready</h3>
+                            <p className="text-sm text-neutral-400 max-w-sm mx-auto">The successful build is live on its HTTPS project URL and ready to open.</p>
                           </div>
                           
                           <div className="w-full max-w-xl">
                             <div className="p-1.5 rounded-xl border border-neutral-800 bg-neutral-900/50 flex items-center gap-2 mb-8 shadow-2xl backdrop-blur-sm">
                               <div className="flex-1 px-4 text-[13px] font-mono text-neutral-300 text-left truncate flex items-center gap-2">
-                                <span className="text-neutral-500">https://</span>overlord-preview-v2.kyte.dev
+                                <span className="text-neutral-500">https://</span>overlord.site.kyte.rudrx.cloud
                               </div>
                               <Button className="h-9 rounded-lg bg-white text-black hover:bg-neutral-200 px-6 text-[13px] font-medium transition-transform active:scale-95">
                                 Copy Link
@@ -391,7 +391,7 @@ export default function LandingPage() {
                   <span className="grid size-6 place-items-center rounded-full bg-white/20 text-white">
                     <Rocket className="size-3.5" />
                   </span>
-                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">Global Edge Network</span>
+                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">Isolated Builds</span>
                 </div>
               </div>
 
@@ -401,7 +401,7 @@ export default function LandingPage() {
                   <span className="grid size-6 place-items-center rounded-full bg-white/20 text-white">
                     <Zap className="size-3.5" />
                   </span>
-                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">Instant Rollbacks</span>
+                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">Deployment History</span>
                 </div>
               </div>
 
@@ -421,7 +421,7 @@ export default function LandingPage() {
                   <span className="grid size-6 place-items-center rounded-full bg-white/20 text-white">
                     <GitBranch className="size-3.5" />
                   </span>
-                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">Preview Deployments</span>
+                  <span className="font-sans font-medium text-white whitespace-nowrap text-[12.5px]">HTTPS Project URLs</span>
                 </div>
               </div>
             </div>
@@ -441,7 +441,7 @@ export default function LandingPage() {
               From <span className="italic text-[#8b9dce]">commit</span> to <span className="italic text-white">production</span> in seconds.
             </h2>
             <p className="max-w-xl text-[16px] md:text-[17px] leading-relaxed text-neutral-400 mt-2">
-              Stop configuring complex CI/CD pipelines. Kyte handles the heavy lifting so you can focus on building.
+              A short, inspectable path from repository to a versioned deployment—without maintaining your own CI runner.
             </p>
           </div>
 
@@ -471,9 +471,9 @@ export default function LandingPage() {
                 <div className="mb-5 inline-flex items-center gap-2">
                   <span className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#8b9dce] bg-[#8b9dce]/10 px-2.5 py-1 rounded-md">STEP 01</span>
                 </div>
-                <h3 className="mb-3 text-xl font-medium text-neutral-200">Connect Codebase</h3>
+                <h3 className="mb-3 text-xl font-medium text-neutral-200">Connect GitHub</h3>
                 <p className="text-[14px] text-neutral-400 leading-relaxed">
-                  Import your repository from GitHub or GitLab. We automatically detect your framework and configure the optimal build settings without any manual setup.
+                  Import a GitHub repository or provide a public repository URL. Review the detected framework, branch, root directory, and build output before launch.
                 </p>
               </div>
             </div>
@@ -505,7 +505,7 @@ export default function LandingPage() {
                 </div>
                 <h3 className="mb-3 text-xl font-medium text-neutral-200">Secure Build</h3>
                 <p className="text-[14px] text-neutral-400 leading-relaxed">
-                  Your app is securely compiled in our isolated containers. We install dependencies, cache assets, and optimize your production build for maximum performance.
+                  Kyte installs dependencies and compiles your app inside an isolated build container. Follow the live output and see exactly where a failed build stopped.
                 </p>
               </div>
             </div>
@@ -535,9 +535,9 @@ export default function LandingPage() {
                 <div className="mb-5 inline-flex items-center gap-2">
                   <span className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#8b9dce] bg-[#8b9dce]/10 px-2.5 py-1 rounded-md">STEP 03</span>
                 </div>
-                <h3 className="mb-3 text-xl font-medium text-neutral-200">Global Deploy</h3>
+                <h3 className="mb-3 text-xl font-medium text-neutral-200">Publish with HTTPS</h3>
                 <p className="text-[14px] text-neutral-400 leading-relaxed">
-                  Your static assets are distributed instantly across our global edge network. Deliver your application to users worldwide with milliseconds of latency.
+                  A successful static build receives a Kyte subdomain and HTTPS automatically. Add a custom domain when you are ready to use your own address.
                 </p>
               </div>
             </div>
@@ -564,9 +564,9 @@ export default function LandingPage() {
             {/* Top Left Card */}
             <div className="col-span-1 border-b md:border-r border-neutral-800/80 flex flex-col overflow-hidden h-[380px] group transition-colors hover:bg-[#0a0a0a]/50 relative">
               <div className="p-8 pb-4">
-                <h3 className="text-xl font-medium text-neutral-200 mb-2">Advanced Edge Routing</h3>
+                <h3 className="text-xl font-medium text-neutral-200 mb-2">Builds you can follow</h3>
                 <p className="text-sm text-neutral-400 leading-relaxed">
-                  Our platform utilizes cutting-edge CDN nodes to provide accurate and efficient delivery for your business needs.
+                  Watch installation and build output as it happens, then inspect duration, commit, status, and logs from the deployment history.
                 </p>
               </div>
               <div className="flex-1 relative mt-4 mx-8 mb-0 rounded-t-xl border-x border-t border-neutral-800/50 bg-[#050505] overflow-hidden">
@@ -578,11 +578,11 @@ export default function LandingPage() {
                 </div>
                 <div className="p-4 space-y-2 font-mono text-xs text-neutral-400 bg-transparent">
                   <p><span className="text-[#8b9dce]">~</span> Building optimized production build...</p>
-                  <p><span className="text-[#8b9dce]">~</span> Deploying to 32 edge nodes</p>
-                  <p className="text-emerald-400/90">✓ fra1 (Frankfurt) - 12ms</p>
-                  <p className="text-emerald-400/90">✓ iad1 (Washington) - 15ms</p>
-                  <p className="text-emerald-400/90">✓ hnd1 (Tokyo) - 18ms</p>
-                  <p className="text-emerald-400/90">✓ lhr1 (London) - 11ms</p>
+                  <p><span className="text-[#8b9dce]">~</span> Validating output directory...</p>
+                  <p className="text-emerald-400/90">✓ Dependencies installed</p>
+                  <p className="text-emerald-400/90">✓ Production build completed</p>
+                  <p className="text-emerald-400/90">✓ Static output uploaded</p>
+                  <p className="text-emerald-400/90">✓ Deployment is ready</p>
                 </div>
               </div>
             </div>
@@ -590,9 +590,9 @@ export default function LandingPage() {
             {/* Top Middle Card */}
             <div className="col-span-1 border-b md:border-r border-neutral-800/80 flex flex-col overflow-hidden h-[380px] group transition-colors hover:bg-[#0a0a0a]/50 relative">
               <div className="p-8 pb-4">
-                <h3 className="text-xl font-medium text-neutral-200 mb-2">Secure By Default</h3>
+                <h3 className="text-xl font-medium text-neutral-200 mb-2">Guardrails by default</h3>
                 <p className="text-sm text-neutral-400 leading-relaxed">
-                  State-of-the-art encryption and strict privacy protocols, ensuring your source code remains completely confidential.
+                  Encrypted GitHub credentials, signed webhooks, isolated builds, HTTPS, deployment concurrency controls, and daily webhook build limits.
                 </p>
               </div>
               <div className="flex-1 relative mt-4 mx-8 mb-0 rounded-t-xl border-x border-t border-neutral-800/50 bg-[#050505] overflow-hidden">
@@ -608,8 +608,8 @@ export default function LandingPage() {
                     <span className="text-[#8b9dce] bg-[#8b9dce]/10 px-1.5 py-0.5 rounded">Active</span>
                   </div>
                   <div className="flex justify-between items-center bg-[#0a0a0a] p-2.5 rounded border border-neutral-800/50">
-                    <span className="flex items-center gap-2"><Shield size={14} className="text-neutral-500" /> DDoS</span>
-                    <span className="text-[#8b9dce] bg-[#8b9dce]/10 px-1.5 py-0.5 rounded">Enabled</span>
+                    <span className="flex items-center gap-2"><Shield size={14} className="text-neutral-500" /> Webhook Signature</span>
+                    <span className="text-[#8b9dce] bg-[#8b9dce]/10 px-1.5 py-0.5 rounded">Verified</span>
                   </div>
                   <div className="flex justify-between items-center bg-[#0a0a0a] p-2.5 rounded border border-neutral-800/50">
                     <span className="flex items-center gap-2"><Terminal size={14} className="text-neutral-500" /> VM Type</span>
@@ -622,9 +622,9 @@ export default function LandingPage() {
             {/* Right Card (Spans 2 rows) */}
             <div className="col-span-1 md:row-span-2 border-b md:border-b-0 flex flex-col overflow-hidden md:h-full h-[400px] group transition-colors hover:bg-[#0a0a0a]/50 relative">
               <div className="p-8 pb-4">
-                <h3 className="text-xl font-medium text-neutral-200 mb-2">Seamless Integration</h3>
+                <h3 className="text-xl font-medium text-neutral-200 mb-2">GitHub automation</h3>
                 <p className="text-sm text-neutral-400 leading-relaxed">
-                  Easily integrate our deployment solutions into your existing workflows and systems for a smooth and efficient operation.
+                  Enable automatic deployments for one selected project and let pushes to its production branch enter the protected build queue.
                 </p>
               </div>
               <div className="flex-1 relative mt-4 mx-8 mb-0 rounded-t-xl border-x border-t border-neutral-800/50 bg-[#050505] overflow-hidden">
@@ -636,16 +636,16 @@ export default function LandingPage() {
                 <div className="flex h-full bg-transparent">
                    <div className="w-1/3 border-r border-neutral-800/50 p-2 py-3 flex flex-col gap-1 font-medium text-[11px] text-neutral-400">
                       <div className="flex items-center gap-2 text-[#8b9dce] bg-[#8b9dce]/10 p-1.5 rounded"><GitBranch size={12}/> GitHub</div>
-                      <div className="flex items-center gap-2 p-1.5 hover:bg-neutral-900 rounded"><GitBranch size={12}/> GitLab</div>
+                      <div className="flex items-center gap-2 p-1.5 hover:bg-neutral-900 rounded"><Rocket size={12}/> Deployments</div>
                       <div className="flex items-center gap-2 p-1.5 hover:bg-neutral-900 rounded"><Globe size={12}/> Domains</div>
                       <div className="flex items-center gap-2 p-1.5 hover:bg-neutral-900 rounded"><Terminal size={12}/> CLI</div>
                    </div>
                    <div className="w-2/3 p-4 font-mono text-[11px] text-neutral-500">
-                     <p className="text-neutral-300 mb-3 font-sans font-medium text-xs">Automated PR Comments</p>
+                     <p className="text-neutral-300 mb-3 font-sans font-medium text-xs">Signed push event</p>
                      <div className="bg-[#0a0a0a] p-3 rounded-md border border-neutral-800/50">
                        <p className="text-neutral-300"><span className="font-semibold text-[#8b9dce]">Kyte</span> <span className="text-neutral-500 font-sans">bot</span></p>
-                       <p className="mt-2 text-neutral-400">Preview Environment Ready!</p>
-                       <p className="text-[#8b9dce] mt-2 hover:underline bg-[#8b9dce]/10 px-2 py-1 rounded inline-block truncate w-full">pr-142.kyte.dev</p>
+                       <p className="mt-2 text-neutral-400">Production deployment ready</p>
+                       <p className="text-[#8b9dce] mt-2 hover:underline bg-[#8b9dce]/10 px-2 py-1 rounded inline-block truncate w-full">commit a7f93b2 · success</p>
                      </div>
                    </div>
                 </div>
@@ -655,9 +655,9 @@ export default function LandingPage() {
             {/* Bottom Left Card (Spans 2 cols) */}
             <div className="col-span-1 md:col-span-2 md:border-r border-neutral-800/80 flex flex-col overflow-hidden h-[380px] group transition-colors hover:bg-[#0a0a0a]/50 relative">
               <div className="p-8 pb-4 md:w-2/3">
-                <h3 className="text-xl font-medium text-neutral-200 mb-2">Customizable Workflows</h3>
+                <h3 className="text-xl font-medium text-neutral-200 mb-2">Configuration without pipeline files</h3>
                 <p className="text-sm text-neutral-400 leading-relaxed">
-                  Tailor our CI/CD services to your specific needs with flexible customization options, allowing you to get the most out of our platform.
+                  Set the root directory, build command, output directory, environment variables, branch, and custom domains from the project workspace.
                 </p>
               </div>
               <div className="flex-1 relative mt-4 mx-8 mb-0 rounded-t-xl border-x border-t border-neutral-800/50 bg-[#050505] overflow-hidden">
@@ -699,8 +699,75 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section id="pricing" className="relative border-t border-neutral-800/50 px-4 py-24 sm:py-32">
+        <div className="mx-auto max-w-5xl">
+          <div className="mx-auto mb-14 max-w-2xl text-center">
+            <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-[#8b9dce]">
+              PRICING
+            </p>
+            <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+              Start small. Talk to us when the workload grows.
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-neutral-400">
+              The public platform stays intentionally limited while Kyte is early. Larger allowances are planned with you so one account cannot crowd out everyone else.
+            </p>
+          </div>
+
+          <div className="grid items-stretch gap-5 lg:grid-cols-2">
+            <Card className="flex h-full flex-col border-neutral-800 bg-neutral-950 shadow-none">
+              <CardHeader className="border-b border-neutral-800 p-7 lg:min-h-[220px]">
+                <div className="flex items-center justify-between gap-4">
+                  <CardTitle className="text-xl text-white">Free</CardTitle>
+                  <Badge variant="outline" className="border-neutral-700 text-neutral-300">Available now</Badge>
+                </div>
+                <div className="mt-5 flex items-end gap-2">
+                  <span className="text-5xl font-semibold tracking-[-0.06em] text-white">₹0</span>
+                  <span className="pb-1.5 text-sm text-neutral-500">while in beta</span>
+                </div>
+                <CardDescription className="mt-3 leading-6 text-neutral-400">For personal projects, experiments, and small production websites.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 p-7">
+                <ul className="flex flex-col gap-3 text-sm text-neutral-300">
+                  {["Up to 4 hosted projects", "One webhook-enabled project", "30 webhook builds per rolling 24 hours", "Manual redeployments and live build logs", "HTTPS project URLs, custom domains, and observability"].map((feature) => (
+                    <li key={feature} className="flex items-start gap-3"><Check className="mt-0.5 size-4 shrink-0 text-[#8b9dce]" />{feature}</li>
+                  ))}
+                </ul>
+              </CardContent>
+              <CardFooter className="mt-auto p-7 pt-0">
+                <Button nativeButton={false} render={<Link href="/sign-up" />} className="h-10 w-full">Create a free account<ArrowRight data-icon="inline-end" /></Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="relative flex h-full flex-col overflow-hidden border-[#8b9dce]/40 bg-[#0b0d13] shadow-none">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8b9dce] to-transparent" />
+              <CardHeader className="border-b border-[#8b9dce]/20 p-7 lg:min-h-[220px]">
+                <div className="flex items-center justify-between gap-4">
+                  <CardTitle className="text-xl text-white">More capacity</CardTitle>
+                  <Badge className="bg-[#8b9dce] text-neutral-950 hover:bg-[#8b9dce]">Contact</Badge>
+                </div>
+                <div className="mt-5 flex items-end gap-2">
+                  <span className="text-4xl font-semibold tracking-[-0.05em] text-white">Let&apos;s talk</span>
+                </div>
+                <CardDescription className="mt-3 leading-6 text-neutral-400">For teams that need higher limits, operational planning, or deployment support.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 p-7">
+                <ul className="flex flex-col gap-3 text-sm text-neutral-300">
+                  {["Custom project allowances", "Deployment capacity planning", "Assisted setup and migration guidance", "Priority operational support", "A plan matched to your application and traffic"].map((feature) => (
+                    <li key={feature} className="flex items-start gap-3"><Check className="mt-0.5 size-4 shrink-0 text-[#8b9dce]" />{feature}</li>
+                  ))}
+                </ul>
+              </CardContent>
+              <CardFooter className="mt-auto p-7 pt-0">
+                <Button nativeButton={false} render={<Link href="/contact?topic=capacity" />} variant="outline" className="h-10 w-full border-[#8b9dce]/30 bg-[#8b9dce]/10 hover:bg-[#8b9dce]/15"><Mail data-icon="inline-start" />Contact about capacity</Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ */}
-      <section className="relative px-4 py-24 sm:py-32 border-t border-neutral-800/50">
+      <section id="faq" className="relative px-4 py-24 sm:py-32 border-t border-neutral-800/50">
         <div className="mx-auto max-w-5xl">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-12 md:gap-16">
             {/* Left Column: Title and text */}
@@ -712,7 +779,7 @@ export default function LandingPage() {
                 The <span className="italic font-light">usual stuff.</span>
               </h2>
               <p className="text-neutral-400 leading-relaxed">
-                Can&apos;t find what you&apos;re after? <a href="#" className="text-white underline decoration-neutral-600 underline-offset-4 hover:decoration-white transition-colors">Email us</a>,
+                Can&apos;t find what you&apos;re after? <Link href="/contact" className="text-white underline decoration-neutral-600 underline-offset-4 hover:decoration-white transition-colors">Email us</Link>,
                 <br />and we usually reply the same day.
               </p>
             </div>
@@ -721,44 +788,44 @@ export default function LandingPage() {
             <div className="md:col-span-7">
               <Accordion className="w-full flex flex-col gap-3">
             <AccordionItem value="item-1" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
-              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">What is Kyte?</AccordionTrigger>
+              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">What can I deploy on Kyte?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Kyte is a fully automated deployment platform tailored specifically for frontend applications like React, Vue, Next.js, and static sites. We abstract away infrastructure so you can simply push your code and get a live URL in seconds.
+                Kyte hosts static web application output. React and Vue projects built with Vite work directly, while Next.js projects must use static export. You can customize the root directory, build command, and output directory before deploying.
               </AccordionContent>
             </AccordionItem>
             
             <AccordionItem value="item-2" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
-              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">How do preview URLs work?</AccordionTrigger>
+              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">Does every push trigger a build?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Every time you trigger a deployment on Kyte (via a pull request or branch update), we automatically generate an immutable unique subdomain (e.g. `pr-142.kyte.dev`). This allows you to test that specific build independently from your production environment.
+                Only when you enable the GitHub webhook for that project. Automatic builds are limited to one project per account and 30 webhook-triggered builds in a rolling 24-hour window. Manual deployments remain available from the dashboard.
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="item-3" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
               <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">Can I use a custom domain?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Absolutely. You can easily attach custom domains to any of your production environments. We provide automatic, free SSL certificates out of the box for every custom domain you connect.
+                Yes. Add the hostname from the project&apos;s Domains tab, then create the DNS record Kyte shows you. Keep the generated Kyte URL available while DNS and HTTPS configuration finish propagating.
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="item-4" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
-              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">Do you support monorepos?</AccordionTrigger>
+              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">How are environment variables handled?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Yes, Kyte offers first-class support for modern monorepo architectures including Turborepo, Nx, and Lerna. You can easily configure custom root directories and build commands for each individual project.
+                Add build-time values in project settings instead of committing them to Git. Kyte validates the variable names and injects them only into the isolated build process. Remember that values bundled into browser JavaScript are visible to visitors.
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="item-5" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
-              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">How fast is the edge network?</AccordionTrigger>
+              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">What happens when a deployment fails?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Our global edge network spans 32 regions worldwide. It intelligently routes your static assets to the node geographically closest to your users, consistently delivering single-digit millisecond latency.
+                The failed deployment keeps its status, commit, duration, and build output so you can diagnose it. A failed build does not replace the last successful website. Fix the repository or settings, then redeploy.
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="item-6" className="border border-dashed border-neutral-800/80 rounded-xl px-6">
-              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">Is it free?</AccordionTrigger>
+              <AccordionTrigger className="py-5 text-left text-lg font-medium hover:text-[#8b9dce] hover:no-underline transition-colors">What does the free plan include?</AccordionTrigger>
               <AccordionContent className="text-neutral-400 pt-2 pb-6 leading-relaxed">
-                Currently, Kyte is in beta and completely free for early adopters and hobbyist developers. We will introduce reasonable tier pricing for enterprise use-cases in the future, but there will always be a generous free tier.
+                During beta, the free plan includes up to four hosted projects, one webhook-enabled project, manual deployments, build logs, custom domains, and basic observability. If you need more capacity, contact us before moving production workloads.
               </AccordionContent>
             </AccordionItem>
               </Accordion>
@@ -782,7 +849,7 @@ export default function LandingPage() {
         </h1>
       </div>
 
-
+      <MarketingFooter blend />
     </main>
   );
 }

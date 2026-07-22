@@ -21,7 +21,6 @@ model User {
   projects             Project[]
   githubConnections    GitHubConnection[]
   organizationMembers  OrganizationMember[]
-  notifications        Notification[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
@@ -118,17 +117,6 @@ model DeploymentLogChunk {
   createdAt    DateTime   @default(now())
 
   @@unique([deploymentId, sequence, stream])
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  message   String
-  type      String   @default("INFO") // SUCCESS, ERROR, INFO
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
 }
 
 model GitHubConnection {

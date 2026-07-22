@@ -8,14 +8,12 @@ import {
 import type Redis from 'ioredis';
 import {
   DeploymentsService,
-  MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS,
   WebhookDeploymentQuotaExceededError,
 } from '../deployments/deployments.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const WEBHOOK_REDIS = Symbol('WEBHOOK_REDIS');
 const DELIVERY_TTL_SECONDS = 24 * 60 * 60;
-const QUOTA_NOTICE_TTL_SECONDS = 24 * 60 * 60;
 
 interface GitHubPushPayload {
   ref?: unknown;
@@ -116,31 +114,6 @@ export class WebhooksService implements OnModuleDestroy {
           this.logger.warn(
             `Skipping webhook deployment for project ${project.id}: 24-hour webhook build quota reached`,
           );
-          try {
-            const shouldNotify = await this.redis.set(
-              `github:webhook-quota-notice:${project.userId}`,
-              '1',
-              'EX',
-              QUOTA_NOTICE_TTL_SECONDS,
-              'NX',
-            );
-            if (shouldNotify === 'OK') {
-              await this.prisma.notification.create({
-                data: {
-                  userId: project.userId,
-                  title: 'Webhook build limit reached',
-                  message:
-                    `Automatic deployments are limited to ${MAX_WEBHOOK_DEPLOYMENTS_PER_24_HOURS} builds per 24 hours. ` +
-                    'Manual deployments remain available.',
-                  type: 'WARNING',
-                },
-              });
-            }
-          } catch {
-            this.logger.error(
-              `Failed to record webhook quota notification for user ${project.userId}`,
-            );
-          }
           continue;
         }
         if (

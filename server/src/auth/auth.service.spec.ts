@@ -33,8 +33,48 @@ describe('AuthService GitHub security', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     stateStore.clear();
+    delete process.env.ADMIN_EMAILS;
     process.env.GITHUB_CLIENT_ID = 'github-client';
     process.env.GITHUB_CLIENT_SECRET = 'github-secret';
+  });
+
+  it('does not expose admin navigation state to a regular user', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user_1',
+      email: 'user@example.com',
+      role: 'USER',
+      githubConnections: [],
+    });
+
+    const service = new AuthService(prisma as any, redis as any);
+
+    await expect(
+      service.me({
+        id: 'user_1',
+        email: 'user@example.com',
+        clerkId: 'clerk_1',
+      }),
+    ).resolves.toMatchObject({ isAdmin: false });
+  });
+
+  it('exposes admin navigation state only for an admin role or configured email', async () => {
+    process.env.ADMIN_EMAILS = 'owner@example.com';
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user_1',
+      email: 'owner@example.com',
+      role: 'USER',
+      githubConnections: [],
+    });
+
+    const service = new AuthService(prisma as any, redis as any);
+
+    await expect(
+      service.me({
+        id: 'user_1',
+        email: 'owner@example.com',
+        clerkId: 'clerk_1',
+      }),
+    ).resolves.toMatchObject({ isAdmin: true });
   });
 
   it('uses a random, single-use state and stores the token with AES-GCM', async () => {
@@ -54,7 +94,10 @@ describe('AuthService GitHub security', () => {
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ access_token: 'github-plaintext-token', scope: 'repo' }),
+        json: async () => ({
+          access_token: 'github-plaintext-token',
+          scope: 'repo',
+        }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,

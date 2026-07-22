@@ -207,16 +207,6 @@ const worker = new Worker(
         where: { id: deployment.projectId },
         data: { activeDeployId: deploymentId },
       });
-
-      // Create notification
-      await prisma.notification.create({
-        data: {
-          userId: deployment.project.userId,
-          title: 'Deployment successful',
-          message: `${deployment.project.name} is now live (branch: ${deployment.branch})`,
-          type: 'SUCCESS',
-        },
-      });
     } catch (err: any) {
       const currentDeployment = await prisma.deployment.findUnique({
         where: { id: deploymentId },
@@ -230,16 +220,6 @@ const worker = new Worker(
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: { status: 'FAILED' },
-      });
-
-      // Create notification
-      await prisma.notification.create({
-        data: {
-          userId: deployment.project.userId,
-          title: 'Deployment failed',
-          message: `${deployment.project.name} failed to build (branch: ${deployment.branch})`,
-          type: 'ERROR',
-        },
       });
     } finally {
       if (isolatedBuildId) {

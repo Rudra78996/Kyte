@@ -30,6 +30,9 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarMenuAction,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarGroup,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar"
@@ -61,7 +64,7 @@ type RequestError = Error & { status?: number; details?: { suggestedSlug?: strin
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const apiRequest = useApiRequest();
 
   interface SidebarOrg {
@@ -92,7 +95,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [organizations, setOrganizations] = React.useState<SidebarOrg[]>([]);
   const [organizationsLoading, setOrganizationsLoading] = React.useState(true);
   const [projectLimit, setProjectLimit] = React.useState<ProjectLimit | null>(null);
-  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [adminUserId, setAdminUserId] = React.useState<string | null>(null);
   const [projectSearch, setProjectSearch] = React.useState("");
   
   // Read initial activeOrg from localStorage if available
@@ -169,12 +172,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           apiRequest('GET', '/auth/me'),
         ]);
         setProjectLimit(limit);
-        setIsAdmin(Boolean(account.isAdmin));
+        setAdminUserId(account.isAdmin ? userId : null);
       } catch (error) {
         console.error("Failed to load project allowance", error);
       }
     })();
-  }, [pathname, apiRequest, isLoaded, isSignedIn]);
+  }, [pathname, apiRequest, isLoaded, isSignedIn, userId]);
 
   // Fetch projects scoped to activeOrg whenever activeOrg changes
   React.useEffect(() => {
@@ -339,10 +342,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <span>Settings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {isAdmin && (
+              {adminUserId === userId && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    isActive={pathname === '/admin'}
+                    isActive={pathname.startsWith('/admin')}
                     tooltip="Admin"
                     className="h-9 rounded-md px-2.5 text-[13px] font-medium"
                     render={<Link href="/admin" />}
@@ -350,6 +353,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <ShieldCheck />
                     <span>Admin</span>
                   </SidebarMenuButton>
+                  <SidebarMenuSub>
+                    {[
+                      { href: '/admin', label: 'Overview' },
+                      { href: '/admin/users', label: 'Users' },
+                      { href: '/admin/sites', label: 'Hosted sites' },
+                      { href: '/admin/deployments', label: 'Deployments' },
+                      { href: '/admin/settings', label: 'Settings' },
+                    ].map((item) => (
+                      <SidebarMenuSubItem key={item.href}>
+                        <SidebarMenuSubButton
+                          isActive={pathname === item.href}
+                          render={<Link href={item.href} />}
+                        >
+                          {item.label}
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
                 </SidebarMenuItem>
               )}
             </SidebarMenu>

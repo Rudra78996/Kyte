@@ -27,9 +27,7 @@ export class AuthService implements OnModuleDestroy {
     await this.redis.quit();
   }
 
-  async me(
-    user: AuthenticatedUser,
-  ): Promise<{
+  async me(user: AuthenticatedUser): Promise<{
     id: string;
     email: string;
     isAdmin: boolean;
@@ -58,8 +56,8 @@ export class AuthService implements OnModuleDestroy {
     const githubConn = account.githubConnections?.[0];
     const githubConnected = Boolean(
       githubConn?.accessTokenEncrypted &&
-        githubConn.tokenIv &&
-        githubConn.tokenAuthTag,
+      githubConn.tokenIv &&
+      githubConn.tokenAuthTag,
     );
 
     return {
@@ -73,9 +71,7 @@ export class AuthService implements OnModuleDestroy {
           .filter(Boolean)
           .includes(account.email.toLowerCase()),
       githubConnected,
-      githubUsername: githubConnected
-        ? githubConn?.githubUsername
-        : undefined,
+      githubUsername: githubConnected ? githubConn?.githubUsername : undefined,
     };
   }
 
@@ -107,9 +103,7 @@ export class AuthService implements OnModuleDestroy {
       },
     );
     if (!response.ok) {
-      throw new BadRequestException(
-        'Failed to fetch repositories from GitHub',
-      );
+      throw new BadRequestException('Failed to fetch repositories from GitHub');
     }
     const repos = (await response.json()) as any[];
     return repos.map((repo) => ({
