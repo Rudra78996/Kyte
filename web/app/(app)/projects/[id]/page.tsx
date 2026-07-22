@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useApiRequest, useApiToken } from '@/hooks/use-api';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -110,7 +110,9 @@ export default function ProjectPage() {
   useEffect(() => { document.title = "Project | Kyte"; }, []);
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params.id as string;
+  const adminView = searchParams.get('admin') === '1';
   const apiRequest = useApiRequest();
   const getClerkToken = useApiToken();
 
@@ -153,8 +155,7 @@ export default function ProjectPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const proj = await apiRequest('GET', `/projects`);
-      const found = proj.projects.find((p: Project) => p.id === projectId);
+      const found = await apiRequest('GET', `/projects/${projectId}`) as Project;
       setProject(found);
       setWebhookStatus({
         enabled: Boolean(found.webhookId),
@@ -164,8 +165,10 @@ export default function ProjectPage() {
         limit: 1,
         canEnable: true,
       });
-      const webhook = await apiRequest('GET', `/projects/${projectId}/webhook`).catch(() => null);
-      if (webhook) setWebhookStatus(webhook);
+      if (!adminView) {
+        const webhook = await apiRequest('GET', `/projects/${projectId}/webhook`).catch(() => null);
+        if (webhook) setWebhookStatus(webhook);
+      }
 
       setSettingsForm((prev: SettingsForm) => ({
         name: prev.name || found.name || '',
@@ -181,12 +184,14 @@ export default function ProjectPage() {
         setActiveDeploy((prev: Deployment | null) => prev ? prev : deps.deployments[0]);
       }
 
-      const envData = await apiRequest('GET', `/projects/${projectId}/env`).catch(() => []);
-      if (Array.isArray(envData) && !hasEnvChanges) {
-        setEnvVars(envData.length ? envData : [{ key: "", value: "" }]);
+      if (!adminView) {
+        const envData = await apiRequest('GET', `/projects/${projectId}/env`).catch(() => []);
+        if (Array.isArray(envData) && !hasEnvChanges) {
+          setEnvVars(envData.length ? envData : [{ key: "", value: "" }]);
+        }
       }
     } catch (err) { console.error(err); }
-  }, [apiRequest, hasEnvChanges, projectId]);
+  }, [adminView, apiRequest, hasEnvChanges, projectId]);
 
   const loadMetrics = useCallback(async () => {
     setMetricsLoading(true);
@@ -326,7 +331,9 @@ export default function ProjectPage() {
 
   if (!project) return <div className="app-page py-24 text-center text-muted-foreground animate-pulse">Loading project…</div>;
 
-  const tabs = ["Overview", "Observability", "Deployments", "Logs", "Domains", "Settings"];
+  const tabs = adminView
+    ? ["Overview", "Observability", "Deployments", "Logs"]
+    : ["Overview", "Observability", "Deployments", "Logs", "Domains", "Settings"];
 
   const renderStatusBadge = (status: string) => {
     const label = status === 'SUCCESS' ? 'Ready' : status === 'FAILED' ? 'Failed' : status === 'BUILDING' ? 'Building' : status === 'UPLOADING' ? 'Uploading' : 'Queued';
@@ -358,9 +365,11 @@ export default function ProjectPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={triggerDeploy} variant="outline" size="sm">
-            <RefreshCw data-icon="inline-start" /> Redeploy
-          </Button>
+          {adminView ? <Badge variant="outline">Admin read-only</Badge> : (
+            <Button onClick={triggerDeploy} variant="outline" size="sm">
+              <RefreshCw data-icon="inline-start" /> Redeploy
+            </Button>
+          )}
           <a href={siteUrl(project.subdomain || '')} target="_blank" rel="noreferrer">
             <Button size="sm">
               <ExternalLink data-icon="inline-start" /> Visit

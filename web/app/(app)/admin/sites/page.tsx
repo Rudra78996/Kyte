@@ -11,6 +11,7 @@ import { AdminDataCard, AdminEmpty, AdminPageHeader, AdminPageLoading } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
@@ -31,6 +32,7 @@ export default function AdminSitesPage() {
   const [page, setPage] = useState(0);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"updatedAt" | "pageviews" | "deployments">("updatedAt");
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -39,7 +41,7 @@ export default function AdminSitesPage() {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ take: String(ADMIN_PAGE_SIZE), skip: String(page * ADMIN_PAGE_SIZE) });
+      const params = new URLSearchParams({ take: String(ADMIN_PAGE_SIZE), skip: String(page * ADMIN_PAGE_SIZE), sort, order: "desc" });
       if (search) params.set("search", search);
       const result = await apiRequest("GET", `/admin/projects?${params.toString()}`) as { projects: AdminProject[]; total: number };
       setProjects(result.projects || []);
@@ -50,7 +52,7 @@ export default function AdminSitesPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiRequest, page, search]);
+  }, [apiRequest, page, search, sort]);
 
   useEffect(() => {
     document.title = "Admin hosted sites | Kyte";
@@ -82,6 +84,16 @@ export default function AdminSitesPage() {
       <form className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center" onSubmit={(event) => { event.preventDefault(); setPage(0); setSearch(searchDraft.trim()); }}>
         <Search className="hidden text-muted-foreground sm:block" />
         <Input aria-label="Search hosted sites" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Search site, repository, subdomain, or owner email" />
+        <Select value={sort} onValueChange={(value) => { setSort(value as typeof sort); setPage(0); }}>
+          <SelectTrigger aria-label="Sort hosted sites" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+          <SelectContent align="end">
+            <SelectGroup>
+              <SelectItem value="updatedAt">Recently updated</SelectItem>
+              <SelectItem value="pageviews">Most pageviews</SelectItem>
+              <SelectItem value="deployments">Most deployments</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <Button type="submit" variant="outline">Search sites</Button>
         {search && <Button type="button" variant="ghost" onClick={() => { setSearchDraft(""); setSearch(""); setPage(0); }}>Clear</Button>}
       </form>
@@ -95,8 +107,8 @@ export default function AdminSitesPage() {
                 <TableCell className="min-w-72 whitespace-normal py-4"><p className="font-medium">{project.name}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{project.subdomain}</p><p className="mt-1 max-w-80 truncate text-xs text-muted-foreground">{project.repoUrl}</p></TableCell>
                 <TableCell><p>{project.user.username || project.user.email}</p>{project.user.username && <p className="mt-1 text-xs text-muted-foreground">{project.user.email}</p>}</TableCell>
                 <TableCell><Badge variant={adminStatusVariant(project.activeDeploy?.status || "NONE")}>{project.activeDeploy?.status || "No deployment"}</Badge></TableCell>
-                <TableCell><p>{project._count.deployments} deployments</p><p className="mt-1 text-xs text-muted-foreground">{project._count.customDomains} domains · {project._count.requestLogs ?? 0} tracked views</p></TableCell>
-                <TableCell><div className="flex justify-end gap-1"><Button size="icon-sm" variant="ghost" title="Open project" render={<Link href={`/projects/${project.id}`} />}><ExternalLink /></Button><Button size="icon-sm" variant="ghost" title="Visit website" render={<a href={siteUrl(project.subdomain)} target="_blank" rel="noreferrer" />}><Globe2 /></Button><Button size="icon-sm" variant="destructive" title={`Delete ${project.name}`} onClick={() => setDeleteProject(project)}><Trash2 /></Button></div></TableCell>
+                <TableCell><p>{project._count.deployments} deployments</p><p className="mt-1 text-xs text-muted-foreground">{project._count.customDomains} domains · {project._count.requestLogs ?? 0} pageviews</p></TableCell>
+                <TableCell><div className="flex justify-end gap-1"><Button size="icon-sm" variant="ghost" title="Open project" render={<Link href={`/projects/${project.id}?admin=1`} />}><ExternalLink /></Button><Button size="icon-sm" variant="ghost" title="Visit website" render={<a href={siteUrl(project.subdomain)} target="_blank" rel="noreferrer" />}><Globe2 /></Button><Button size="icon-sm" variant="destructive" title={`Delete ${project.name}`} onClick={() => setDeleteProject(project)}><Trash2 /></Button></div></TableCell>
               </TableRow>
             ))}
           </TableBody>

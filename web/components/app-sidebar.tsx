@@ -8,6 +8,7 @@ import { useApiRequest } from "@/hooks/use-api"
 import { NavUser } from "@/components/nav-user"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -58,6 +59,7 @@ import {
   AppWindow,
   Settings2,
   ShieldCheck,
+  ChevronRight,
 } from "lucide-react"
 
 type RequestError = Error & { status?: number; details?: { suggestedSlug?: string } };
@@ -96,8 +98,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [organizationsLoading, setOrganizationsLoading] = React.useState(true);
   const [projectLimit, setProjectLimit] = React.useState<ProjectLimit | null>(null);
   const [adminUserId, setAdminUserId] = React.useState<string | null>(null);
+  const [adminOpen, setAdminOpen] = React.useState(pathname.startsWith('/admin'));
   const [projectSearch, setProjectSearch] = React.useState("");
-  
+
   // Read initial activeOrg from localStorage if available
   const [activeOrg, setActiveOrg] = React.useState<SidebarOrg | null>(null);
 
@@ -344,33 +347,43 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </SidebarMenuItem>
               {adminUserId === userId && (
                 <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={pathname.startsWith('/admin')}
-                    tooltip="Admin"
-                    className="h-9 rounded-md px-2.5 text-[13px] font-medium"
-                    render={<Link href="/admin" />}
-                  >
-                    <ShieldCheck />
-                    <span>Admin</span>
-                  </SidebarMenuButton>
-                  <SidebarMenuSub>
-                    {[
-                      { href: '/admin', label: 'Overview' },
-                      { href: '/admin/users', label: 'Users' },
-                      { href: '/admin/sites', label: 'Hosted sites' },
-                      { href: '/admin/deployments', label: 'Deployments' },
-                      { href: '/admin/settings', label: 'Settings' },
-                    ].map((item) => (
-                      <SidebarMenuSubItem key={item.href}>
-                        <SidebarMenuSubButton
-                          isActive={pathname === item.href}
-                          render={<Link href={item.href} />}
-                        >
-                          {item.label}
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
+                  <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
+                    <SidebarMenuButton
+                      isActive={pathname.startsWith('/admin')}
+                      tooltip="Admin"
+                      className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                      render={<Link href="/admin" />}
+                      onClick={() => setAdminOpen(true)}
+                    >
+                      <ShieldCheck />
+                      <span>Admin</span>
+                    </SidebarMenuButton>
+                    <CollapsibleTrigger
+                      render={<SidebarMenuAction title={adminOpen ? "Collapse admin navigation" : "Expand admin navigation"} />}
+                    >
+                      <ChevronRight className={cn("transition-transform", adminOpen && "rotate-90")} />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {[
+                          { href: '/admin', label: 'Overview' },
+                          { href: '/admin/users', label: 'Users' },
+                          { href: '/admin/sites', label: 'Hosted sites' },
+                          { href: '/admin/deployments', label: 'Deployments' },
+                          { href: '/admin/settings', label: 'Settings' },
+                        ].map((item) => (
+                          <SidebarMenuSubItem key={item.href}>
+                            <SidebarMenuSubButton
+                              isActive={pathname === item.href}
+                              render={<Link href={item.href} />}
+                            >
+                              {item.label}
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </SidebarMenuItem>
               )}
             </SidebarMenu>

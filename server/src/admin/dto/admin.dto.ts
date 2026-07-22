@@ -16,6 +16,16 @@ export class AdminListQueryDto extends PaginationDto {
   search?: string;
 }
 
+export class AdminProjectListQueryDto extends AdminListQueryDto {
+  @IsOptional()
+  @IsIn(['updatedAt', 'pageviews', 'deployments'])
+  sort?: 'updatedAt' | 'pageviews' | 'deployments';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+}
+
 export class UpdateAdminUserDto {
   @IsOptional()
   @IsIn(['USER', 'ADMIN'])

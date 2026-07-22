@@ -138,7 +138,9 @@ export class ProjectsService {
       WHERE u."id" = ${userId} AND s."id" = ${PLATFORM_SETTINGS_ID}
       LIMIT 1
     `;
-    return limit?.projectLimitOverride ?? limit?.defaultProjectLimit ?? PROJECT_LIMIT;
+    return (
+      limit?.projectLimitOverride ?? limit?.defaultProjectLimit ?? PROJECT_LIMIT
+    );
   }
 
   async findAll(userId: string, skip = 0, take = 20, organizationId?: string) {
@@ -472,7 +474,16 @@ export class ProjectsService {
         ? role === 'OWNER' || role === 'ADMIN'
         : Boolean(role)
       : project.userId === userId;
-    if (!allowed) {
+    const adminReadAccess =
+      !allowed &&
+      action === 'read' &&
+      (
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        })
+      )?.role === 'ADMIN';
+    if (!allowed && !adminReadAccess) {
       throw new NotFoundException('Project not found');
     }
     return project;
@@ -545,11 +556,7 @@ export class ProjectsService {
     });
   }
 
-  async getMetrics(
-    userId: string,
-    projectId: string,
-    days: 7 | 30 | 90 = 7,
-  ) {
+  async getMetrics(userId: string, projectId: string, days: 7 | 30 | 90 = 7) {
     await this.requireProjectAccess(userId, projectId, 'read');
 
     const rangeStart = new Date();

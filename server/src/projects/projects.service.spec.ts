@@ -14,6 +14,9 @@ describe('ProjectsService - Environment Variables', () => {
   let prisma: PrismaService;
 
   const mockPrisma = {
+    user: {
+      findUnique: jest.fn(),
+    },
     project: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
@@ -42,6 +45,12 @@ describe('ProjectsService - Environment Variables', () => {
       deleteMany: jest.fn(),
       update: jest.fn(),
     },
+    $executeRaw: jest.fn().mockResolvedValue(1),
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValue([
+        { projectLimitOverride: null, defaultProjectLimit: 4 },
+      ]),
     $transaction: jest.fn(async (args) => {
       if (Array.isArray(args)) {
         return Promise.all(args);
@@ -61,6 +70,7 @@ describe('ProjectsService - Environment Variables', () => {
     service = module.get<ProjectsService>(ProjectsService);
     prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
+    mockPrisma.user.findUnique.mockResolvedValue({ role: 'USER' });
   });
 
   afterEach(() => {
@@ -388,6 +398,23 @@ describe('ProjectsService - Environment Variables', () => {
   });
 
   describe('central project access policy', () => {
+    it('allows platform admins to inspect but not manage another user project', async () => {
+      mockPrisma.project.findUnique.mockResolvedValue({
+        id: 'proj_other',
+        userId: 'user_2',
+        organizationId: null,
+        organization: null,
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'ADMIN' });
+
+      await expect(
+        service.requireProjectAccess('admin_1', 'proj_other', 'read'),
+      ).resolves.toMatchObject({ id: 'proj_other' });
+      await expect(
+        service.requireProjectAccess('admin_1', 'proj_other', 'manage'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('allows members to read and deploy but not manage', async () => {
       mockPrisma.project.findUnique.mockResolvedValue({
         id: 'proj_1',

@@ -205,7 +205,13 @@ export class AdminService {
     return { success: true };
   }
 
-  async listProjects(search = '', skip = 0, take = 20) {
+  async listProjects(
+    search = '',
+    skip = 0,
+    take = 20,
+    sort: 'updatedAt' | 'pageviews' | 'deployments' = 'updatedAt',
+    order: 'asc' | 'desc' = 'desc',
+  ) {
     const where: Prisma.ProjectWhereInput = search
       ? {
           OR: [
@@ -217,26 +223,85 @@ export class AdminService {
         }
       : {};
 
-    const [projects, total] = await Promise.all([
-      this.prisma.project.findMany({
+    const countOrder = order === 'asc' ? 'asc' : 'desc';
+    const include = {
+      user: { select: { id: true, email: true, username: true } },
+      activeDeploy: true,
+      _count: {
+        select: {
+          deployments: true,
+          requestLogs: { where: { isPageView: true } },
+          customDomains: true,
+        },
+      },
+    } satisfies Prisma.ProjectInclude;
+
+    const total = await this.prisma.project.count({ where });
+    let projects;
+    if (sort === 'pageviews') {
+      const pattern = `%${search}%`;
+      const rankedIds =
+        order === 'asc'
+          ? await this.prisma.$queryRaw<{ id: string }[]>`
+              SELECT p."id"
+              FROM "Project" p
+              JOIN "User" u ON u."id" = p."userId"
+              WHERE (
+                ${search} = ''
+                OR p."name" ILIKE ${pattern}
+                OR p."subdomain" ILIKE ${pattern}
+                OR p."repoUrl" ILIKE ${pattern}
+                OR u."email" ILIKE ${pattern}
+              )
+              ORDER BY (
+                SELECT COUNT(*)
+                FROM "RequestLog" r
+                WHERE r."projectId" = p."id" AND r."isPageView" = true
+              ) ASC, p."updatedAt" DESC
+              OFFSET ${skip}
+              LIMIT ${take}
+            `
+          : await this.prisma.$queryRaw<{ id: string }[]>`
+              SELECT p."id"
+              FROM "Project" p
+              JOIN "User" u ON u."id" = p."userId"
+              WHERE (
+                ${search} = ''
+                OR p."name" ILIKE ${pattern}
+                OR p."subdomain" ILIKE ${pattern}
+                OR p."repoUrl" ILIKE ${pattern}
+                OR u."email" ILIKE ${pattern}
+              )
+              ORDER BY (
+                SELECT COUNT(*)
+                FROM "RequestLog" r
+                WHERE r."projectId" = p."id" AND r."isPageView" = true
+              ) DESC, p."updatedAt" DESC
+              OFFSET ${skip}
+              LIMIT ${take}
+            `;
+      const ids = rankedIds.map((project) => project.id);
+      const unordered = await this.prisma.project.findMany({
+        where: { id: { in: ids } },
+        include,
+      });
+      const byId = new Map(unordered.map((project) => [project.id, project]));
+      projects = ids.flatMap((id) => {
+        const project = byId.get(id);
+        return project ? [project] : [];
+      });
+    } else {
+      projects = await this.prisma.project.findMany({
         where,
         skip,
         take,
-        orderBy: { updatedAt: 'desc' },
-        include: {
-          user: { select: { id: true, email: true, username: true } },
-          activeDeploy: true,
-          _count: {
-            select: {
-              deployments: true,
-              requestLogs: true,
-              customDomains: true,
-            },
-          },
-        },
-      }),
-      this.prisma.project.count({ where }),
-    ]);
+        orderBy:
+          sort === 'deployments'
+            ? { deployments: { _count: countOrder } }
+            : { updatedAt: countOrder },
+        include,
+      });
+    }
 
     return { projects, total, skip, take };
   }

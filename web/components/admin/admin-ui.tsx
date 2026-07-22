@@ -99,7 +99,7 @@ export function AdminDataCard({
         <div><CardTitle>{title}</CardTitle><CardDescription className="mt-2">{description}</CardDescription></div>
         <Badge variant="outline">{total} total</Badge>
       </CardHeader>
-      <CardContent className="p-0">{children}</CardContent>
+      <CardContent className="p-0 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_tbody_td]:py-3">{children}</CardContent>
       <CardFooter className="justify-between gap-4 border-t border-border bg-muted/20 pt-4">
         <p className="text-xs text-muted-foreground">Records {firstRecord}–{lastRecord} of {total}</p>
         <div className="flex gap-2">

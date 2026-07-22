@@ -16,6 +16,7 @@ import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 import {
   AdminListQueryDto,
+  AdminProjectListQueryDto,
   UpdateAdminUserDto,
   UpdatePlatformSettingsDto,
 } from './dto/admin.dto';
@@ -62,8 +63,14 @@ export class AdminController {
   }
 
   @Get('projects')
-  projects(@Query() query: AdminListQueryDto) {
-    return this.admin.listProjects(query.search, query.skip, query.take);
+  projects(@Query() query: AdminProjectListQueryDto) {
+    return this.admin.listProjects(
+      query.search,
+      query.skip,
+      query.take,
+      query.sort,
+      query.order,
+    );
   }
 
   @Delete('projects/:id')
