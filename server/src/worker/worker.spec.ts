@@ -47,6 +47,7 @@ jest.mock('./path-security', () => ({
 }));
 
 const mockPrisma = {
+  $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
   deployment: {
     findUnique: jest.fn(),
     update: jest.fn(),
@@ -193,5 +194,41 @@ describe('Worker - Environment Variables Injection', () => {
 
   it('limits global worker concurrency to two builds', () => {
     expect(workerOptions).toEqual(expect.objectContaining({ concurrency: 2 }));
+  });
+
+  it('activates the release in the same transaction as deployment success', async () => {
+    const deployment = {
+      id: 'dep_1',
+      projectId: 'proj_1',
+      status: 'QUEUED',
+      repoUrl: 'https://github.com/test/repo',
+      branch: 'main',
+      s3Prefix: 'prefix',
+      project: {
+        id: 'proj_1',
+        rootDirectory: './',
+        buildCommand: 'npm run build',
+        outputDirectory: 'dist',
+      },
+    };
+    mockPrisma.deployment.findUnique.mockResolvedValue(deployment);
+    mockPrisma.deployment.update.mockResolvedValue(deployment);
+    mockPrisma.project.update.mockResolvedValue({
+      ...deployment.project,
+      activeDeployId: deployment.id,
+    });
+    mockPrisma.environmentVariable.findMany.mockResolvedValue([]);
+
+    await processor({ data: { deploymentId: deployment.id } });
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.deployment.update).toHaveBeenCalledWith({
+      where: { id: deployment.id },
+      data: { status: 'SUCCESS' },
+    });
+    expect(mockPrisma.project.update).toHaveBeenCalledWith({
+      where: { id: deployment.projectId },
+      data: { activeDeployId: deployment.id },
+    });
   });
 });

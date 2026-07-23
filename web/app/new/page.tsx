@@ -123,53 +123,13 @@ export default function NewProjectPage() {
   }, [logs]);
 
   useEffect(() => {
-    if (step !== 4 || !project?.subdomain) return;
-
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = Date.now() + 20_000;
-    const previewProbeUrl = siteUrl(
-      project.subdomain,
-      `?__kyte_preview=1&probe=${previewAttempt}`,
-    );
-
-    const probe = async () => {
-      const controller = new AbortController();
-      const requestTimeout = setTimeout(() => controller.abort(), 5_000);
-      try {
-        await fetch(previewProbeUrl, {
-          cache: 'no-store',
-          mode: 'no-cors',
-          signal: controller.signal,
-        });
-        if (!cancelled) setPreviewState('loading');
-      } catch {
-        if (cancelled) return;
-        if (Date.now() < deadline) {
-          retryTimer = setTimeout(() => void probe(), 1_500);
-        } else {
-          setPreviewState('error');
-        }
-      } finally {
-        clearTimeout(requestTimeout);
-      }
-    };
-
-    void probe();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [previewAttempt, project?.subdomain, step]);
-
-  useEffect(() => {
     if (previewState !== 'loading') return;
     const timer = setTimeout(() => setPreviewState('error'), 15_000);
     return () => clearTimeout(timer);
   }, [previewState]);
 
   const retryPreview = () => {
-    setPreviewState('checking');
+    setPreviewState('loading');
     setPreviewAttempt((attempt) => attempt + 1);
   };
 
@@ -287,6 +247,7 @@ export default function NewProjectPage() {
           if (data.text.includes('Deploy complete.')) {
              setDeployStatus('SUCCESS');
              setTimeout(() => {
+               setPreviewState('loading');
                setStep(4);
              }, 3000);
              controller.abort();
@@ -803,7 +764,7 @@ export default function NewProjectPage() {
                 </span>
               </div>
               <div className="relative aspect-[16/10] w-full overflow-hidden bg-zinc-950">
-                {(previewState === 'loading' || previewState === 'ready') && project?.subdomain && (
+                {previewState !== 'error' && project?.subdomain && (
                   <iframe
                     key={previewAttempt}
                     src={siteUrl(project.subdomain, `?__kyte_preview=1&attempt=${previewAttempt}`)}

@@ -196,17 +196,20 @@ const worker = new Worker(
         return;
       }
 
-      await prisma.deployment.update({
-        where: { id: deploymentId },
-        data: { status: 'SUCCESS' },
-      });
+      // Publish the release before announcing success. The dashboard switches
+      // to its live preview as soon as it receives "Deploy complete", so both
+      // records must already describe a routable release at that point.
+      await prisma.$transaction([
+        prisma.deployment.update({
+          where: { id: deploymentId },
+          data: { status: 'SUCCESS' },
+        }),
+        prisma.project.update({
+          where: { id: deployment.projectId },
+          data: { activeDeployId: deploymentId },
+        }),
+      ]);
       publishLog('Deploy complete.\n', 'STDOUT');
-
-      // Update Project active deployment
-      await prisma.project.update({
-        where: { id: deployment.projectId },
-        data: { activeDeployId: deploymentId },
-      });
     } catch (err: any) {
       const currentDeployment = await prisma.deployment.findUnique({
         where: { id: deploymentId },
