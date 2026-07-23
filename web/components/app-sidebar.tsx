@@ -348,20 +348,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {adminUserId === userId && (
                 <SidebarMenuItem>
                   <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
-                    <SidebarMenuButton
-                      isActive={pathname.startsWith('/admin')}
-                      tooltip="Admin"
-                      className="h-9 rounded-md px-2.5 text-[13px] font-medium"
-                      render={<Link href="/admin" />}
-                      onClick={() => setAdminOpen(true)}
+                    <CollapsibleTrigger
+                      render={
+                        <SidebarMenuButton
+                          isActive={pathname.startsWith('/admin')}
+                          tooltip="Admin"
+                          className="h-9 rounded-md px-2.5 text-[13px] font-medium"
+                        />
+                      }
                     >
                       <ShieldCheck />
                       <span>Admin</span>
-                    </SidebarMenuButton>
-                    <CollapsibleTrigger
-                      render={<SidebarMenuAction title={adminOpen ? "Collapse admin navigation" : "Expand admin navigation"} />}
-                    >
-                      <ChevronRight className={cn("transition-transform", adminOpen && "rotate-90")} />
+                      <ChevronRight className={cn("ml-auto transition-transform", adminOpen && "rotate-90")} />
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>

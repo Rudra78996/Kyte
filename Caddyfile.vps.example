@@ -9,8 +9,8 @@
 	}
 }
 
-# Kyte dashboard and API. For the one-domain setup use app.kyte.rudrx.cloud.
-app.kyte.rudrx.cloud {
+# Kyte dashboard and API. For the one-domain setup use kyte.rudrx.cloud.
+kyte.rudrx.cloud {
 	header {
 		-Server
 		-X-Powered-By

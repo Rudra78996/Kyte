@@ -36,15 +36,15 @@ describe('production configuration', () => {
     expect(() =>
       assertProductionConfiguration({
         ...validProductionEnvironment,
-        BASE_DOMAIN: 'app.kyte.rudrx.cloud',
+        BASE_DOMAIN: 'kyte.rudrx.cloud',
         SITES_DOMAIN: 'site.kyte.rudrx.cloud',
         DOMAIN_CNAME_TARGET: 'origin.kyte.rudrx.cloud',
-        DASHBOARD_ORIGINS: 'https://app.kyte.rudrx.cloud',
-        CLERK_AUTHORIZED_PARTIES: 'https://app.kyte.rudrx.cloud',
-        NEXT_PUBLIC_API_BASE_URL: 'https://app.kyte.rudrx.cloud/api',
-        GITHUB_CALLBACK_URL: 'https://app.kyte.rudrx.cloud/github/callback',
+        DASHBOARD_ORIGINS: 'https://kyte.rudrx.cloud',
+        CLERK_AUTHORIZED_PARTIES: 'https://kyte.rudrx.cloud',
+        NEXT_PUBLIC_API_BASE_URL: 'https://kyte.rudrx.cloud/api',
+        GITHUB_CALLBACK_URL: 'https://kyte.rudrx.cloud/github/callback',
         WEBHOOK_CALLBACK_URL:
-          'https://app.kyte.rudrx.cloud/api/webhooks/github',
+          'https://kyte.rudrx.cloud/api/webhooks/github',
         NEXT_PUBLIC_SITES_DOMAIN: 'site.kyte.rudrx.cloud',
       }),
     ).not.toThrow();

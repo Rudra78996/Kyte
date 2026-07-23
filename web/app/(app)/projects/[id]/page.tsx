@@ -237,7 +237,7 @@ export default function ProjectPage() {
       setActiveTab("Logs");
       void loadData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to trigger deployment');
+      toast.error(err instanceof Error ? err.message : 'Failed to trigger deployment');
     }
   };
 
@@ -272,10 +272,10 @@ export default function ProjectPage() {
     setIsSaving(true);
     try {
       await apiRequest('PATCH', `/projects/${projectId}`, settingsForm);
-      alert('Settings saved successfully!');
+      toast.success('Project settings saved');
       void loadData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save settings');
+      toast.error(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -287,11 +287,11 @@ export default function ProjectPage() {
       await apiRequest('POST', `/projects/${projectId}/env`, {
         variables: serializeEnvironmentVariables(envVars),
       });
-      alert('Environment variables saved successfully!');
+      toast.success('Environment variables saved');
       setHasEnvChanges(false);
       void loadData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save environment variables');
+      toast.error(err instanceof Error ? err.message : 'Failed to save environment variables');
     }
     finally { setIsSavingEnv(false); }
   };
@@ -303,7 +303,7 @@ export default function ProjectPage() {
       await apiRequest('DELETE', `/projects/${projectId}`);
       router.push('/dashboard');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete project');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete project');
     }
   };
 
@@ -888,9 +888,9 @@ export default function ProjectPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={deleteProject} 
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => void deleteProject()}
                             >
                               Delete Project
                             </AlertDialogAction>

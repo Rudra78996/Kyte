@@ -102,5 +102,10 @@
     "setupFiles": [
       "<rootDir>/test-env.setup.ts"
     ]
+  },
+  "overrides": {
+    "brace-expansion@<2.0.0": "1.1.16",
+    "brace-expansion@>=2.0.0 <3.0.0": "2.1.2",
+    "fast-uri": "3.1.4"
   }
 }

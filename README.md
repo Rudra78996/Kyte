@@ -6,10 +6,10 @@ The product is designed for developers and small teams that want a clear path fr
 
 ## Hosted product
 
-- [Kyte](https://app.kyte.rudrx.cloud)
-- [Documentation](https://app.kyte.rudrx.cloud/docs)
-- [Dashboard](https://app.kyte.rudrx.cloud/dashboard)
-- [Contact](https://app.kyte.rudrx.cloud/contact)
+- [Kyte](https://kyte.rudrx.cloud)
+- [Documentation](https://kyte.rudrx.cloud/docs)
+- [Dashboard](https://kyte.rudrx.cloud/dashboard)
+- [Contact](https://kyte.rudrx.cloud/contact)
 
 
 ## Architecture

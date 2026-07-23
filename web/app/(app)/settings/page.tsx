@@ -10,6 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { GitBranch, Layers3, LogOut, Mail, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,6 +45,7 @@ function SettingsContent() {
   const [projectLimit, setProjectLimit] = useState<ProjectLimit | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -66,11 +77,11 @@ function SettingsContent() {
   };
 
   const disconnectGithub = async () => {
-    if (!window.confirm('Disconnect GitHub and disable automatic deployment webhooks?')) return;
     setDisconnecting(true);
     try {
       const result = await apiRequest('DELETE', '/auth/github/disconnect');
       await loadProfile();
+      setDisconnectDialogOpen(false);
       if (result.cleanupWarnings) {
         toast.warning('GitHub disconnected. Some remote webhooks may need manual removal.');
       } else {
@@ -227,9 +238,35 @@ function SettingsContent() {
           <>
             <Separator />
             <CardFooter className="justify-end pt-6">
-              <Button variant="outline" onClick={disconnectGithub} disabled={disconnecting} size="sm">
+              <Button variant="outline" onClick={() => setDisconnectDialogOpen(true)} disabled={disconnecting} size="sm">
                 {disconnecting ? 'Disconnecting…' : 'Disconnect GitHub'}
               </Button>
+              <AlertDialog
+                open={disconnectDialogOpen}
+                onOpenChange={(open) => {
+                  if (!disconnecting) setDisconnectDialogOpen(open);
+                }}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Kyte will lose repository access and disable automatic deployment webhooks.
+                      If GitHub rejects remote cleanup, you may need to remove a webhook manually.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={disconnecting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={disconnecting}
+                      onClick={() => void disconnectGithub()}
+                    >
+                      {disconnecting ? 'Disconnecting…' : 'Disconnect GitHub'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardFooter>
           </>
         )}
